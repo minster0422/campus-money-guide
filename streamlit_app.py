@@ -301,7 +301,7 @@ def render_price_chart(history: pd.DataFrame, *, height: int = 260, compact: boo
         ],
         "config": {"view": {"stroke": None}},
     }
-    st.vega_lite_chart(history, chart, use_container_width=True)
+    st.vega_lite_chart(history, chart, width="stretch")
 
 
 def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = True) -> None:
@@ -331,7 +331,7 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
             st.button(
                 "자세히 보기",
                 key=f"{prefix}-open-{opportunity_id}",
-                use_container_width=True,
+                width="stretch",
                 on_click=open_opportunity,
                 args=(opportunity_id,),
             )
@@ -339,7 +339,7 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
             st.button(
                 "저장됨 ✓" if favorite else "관심 저장",
                 key=f"{prefix}-fav-{opportunity_id}",
-                use_container_width=True,
+                width="stretch",
                 on_click=toggle_opportunity,
                 args=(opportunity_id,),
             )
@@ -417,7 +417,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
     render_section_head("RECOMMENDED", "지금 확인할 경제기회", "내 조건과 마감일을 함께 반영한 추천입니다.")
     for _, row in eligible.head(3).iterrows():
         render_opportunity_row(row, prefix="home")
-    st.button("경제기회 전체 보기", use_container_width=True, on_click=go_to, args=("경제기회",))
+    st.button("경제기회 전체 보기", width="stretch", on_click=go_to, args=("경제기회",))
 
     render_section_head("NEXT STEP", "모은 돈의 다음 경로", "목표가 있다면 계획하고, 관심이 있다면 시장을 탐색하세요.")
     goal_col, market_col = st.columns(2, gap="large")
@@ -437,7 +437,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
             """,
             unsafe_allow_html=True,
         )
-        st.button("목표계획 열기", key="home-goal", type="primary", use_container_width=True, on_click=go_to, args=("목표계획",))
+        st.button("목표계획 열기", key="home-goal", type="primary", width="stretch", on_click=go_to, args=("목표계획",))
     with market_col:
         market = build_market_index(alternatives)
         change = (market.iloc[-1]["price"] / market.iloc[0]["price"] - 1) * 100
@@ -451,7 +451,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
             """,
             unsafe_allow_html=True,
         )
-        st.button("대체자산 둘러보기", key="home-market", use_container_width=True, on_click=go_to, args=("대체자산",))
+        st.button("대체자산 둘러보기", key="home-market", width="stretch", on_click=go_to, args=("대체자산",))
 
 
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
@@ -497,7 +497,7 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
             "목표계획에 담기",
             key=f"detail-goal-{opportunity_id}",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             on_click=add_to_goal,
             args=(opportunity_id,),
         )
@@ -505,13 +505,13 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
         st.button(
             "관심 목록에서 제거" if favorite else "관심 기회로 저장",
             key=f"detail-fav-{opportunity_id}",
-            use_container_width=True,
+            width="stretch",
             on_click=toggle_opportunity,
             args=(opportunity_id,),
         )
         source_url = row.get("source_url")
         if isinstance(source_url, str) and source_url.startswith("http"):
-            st.link_button("공식 공고 확인", source_url, use_container_width=True)
+            st.link_button("공식 공고 확인", source_url, width="stretch")
         else:
             st.caption("실데이터 교체 시 공식 공고 링크가 표시됩니다.")
 
@@ -643,7 +643,7 @@ def render_asset_list(alternatives: pd.DataFrame) -> None:
                 unsafe_allow_html=True,
             )
         with action:
-            st.button("시세 보기", key=f"asset-open-{asset_id}", use_container_width=True, on_click=open_asset, args=(asset_id,))
+            st.button("시세 보기", key=f"asset-open-{asset_id}", width="stretch", on_click=open_asset, args=(asset_id,))
         st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
 
 
@@ -689,7 +689,7 @@ def render_asset_detail(alternatives: pd.DataFrame) -> None:
         "관심 자산에서 제거" if favorite else "관심 자산에 추가",
         key=f"asset-fav-{asset_id}",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         on_click=toggle_asset,
         args=(asset_id,),
     )
@@ -717,7 +717,7 @@ def render_favorites(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
                 with info:
                     st.markdown(f"**{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}**  \n{format_money(asset['current_price'])} · 6개월 {asset['change_6m']:+.1f}%")
                 with action:
-                    st.button("시세 보기", key=f"saved-asset-{asset['id']}", use_container_width=True, on_click=open_asset, args=(str(asset["id"]),))
+                    st.button("시세 보기", key=f"saved-asset-{asset['id']}", width="stretch", on_click=open_asset, args=(str(asset["id"]),))
                 st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
 
 
