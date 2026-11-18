@@ -203,7 +203,17 @@ if nav == "맞춤 추천":
     eligible_count = int(ranked["eligible"].sum())
     m1, m2, m3 = st.columns(3)
     m1.metric("조건에 맞는 기회", f"{eligible_count}개")
-    m2.metric("가장 가까운 마감", ranked.iloc[0]["deadline"].strftime("%m월 %d일"))
+    today = pd.Timestamp(date.today())
+    upcoming = ranked.loc[
+        ranked["eligible"] & (ranked["deadline"] >= today), "deadline"
+    ]
+    nearest_deadline = upcoming.min()
+    deadline_label = (
+        nearest_deadline.strftime("%m월 %d일")
+        if pd.notna(nearest_deadline)
+        else "해당 공고 없음"
+    )
+    m2.metric("가장 가까운 마감", deadline_label)
     m3.metric("저장한 관심 기회", f"{len(st.session_state.favorites)}개")
 
     show_only_eligible = st.toggle("조건에 맞는 기회만 보기", value=True)
