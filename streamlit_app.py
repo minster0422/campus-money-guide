@@ -1,91 +1,153 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from services.calculator import calculate_goal_plan, format_money
+from services.market import build_market_index, build_price_history
 from services.recommendation import rank_opportunities, recommend_savings
 
 
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
+NAV_ITEMS = ["홈", "경제기회", "목표계획", "대체자산", "관심목록"]
 
 st.set_page_config(
     page_title="Campus Money Guide",
-    page_icon="🌱",
+    page_icon="💸",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
-
 
 st.markdown(
     """
     <style>
-    .stApp { background: #f7f8fc; }
-    [data-testid="stSidebar"] { background: #171b2b; }
-    [data-testid="stSidebar"] * { color: #f7f8ff; }
-    [data-testid="stSidebar"] [data-baseweb="select"] *,
-    [data-testid="stSidebar"] [data-baseweb="select"] input,
-    [data-testid="stSidebar"] [data-baseweb="tag"] * {
-        color: #1e2430 !important;
+    :root {
+        --ink: #191f28;
+        --sub: #6b7684;
+        --blue: #3182f6;
+        --blue-soft: #eaf3ff;
+        --surface: #f2f4f6;
+        --line: #e5e8eb;
+        --green: #00a77b;
+        --red: #f04452;
     }
-    [data-testid="stSidebar"] [data-baseweb="select"] > div {
-        background: #ffffff !important;
+    .stApp { background: #ffffff; color: var(--ink); }
+    .block-container { max-width: 1120px; padding-top: 1.25rem; padding-bottom: 4rem; }
+    [data-testid="stHeader"] { background: rgba(255,255,255,.92); }
+    [data-testid="stToolbar"], #MainMenu, footer { visibility: hidden; }
+    h1, h2, h3 { color: var(--ink); letter-spacing: -.035em; }
+    h1 { font-size: 2.35rem !important; line-height: 1.2 !important; }
+    h2 { font-size: 1.55rem !important; }
+    h3 { font-size: 1.08rem !important; }
+    p { color: var(--ink); }
+    .brand { display: flex; align-items: center; gap: .65rem; min-height: 42px; }
+    .brand-mark {
+        width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+        background: var(--blue); color: #fff; font-weight: 800; font-size: .9rem;
     }
-    [data-testid="stSidebar"] input[role="combobox"] {
-        color: #1e2430 !important;
-        -webkit-text-fill-color: #1e2430 !important;
+    .brand-name { color: var(--ink); font-weight: 800; letter-spacing: -.03em; }
+    .brand-sub { color: var(--sub); font-size: .72rem; }
+    div[role="radiogroup"] { gap: .25rem; justify-content: flex-end; }
+    div[role="radiogroup"] label {
+        background: transparent; padding: .5rem .68rem; border-radius: 10px;
+        transition: background .15s ease;
     }
-    [data-testid="stSidebar"] input[role="combobox"]::placeholder {
-        color: #6f7688 !important;
-        -webkit-text-fill-color: #6f7688 !important;
-        opacity: 1;
+    div[role="radiogroup"] label:hover { background: var(--surface); }
+    div[role="radiogroup"] label:has(input:checked) { background: var(--ink); color: #fff; }
+    div[role="radiogroup"] label:has(input:checked) p { color: #fff !important; }
+    div[role="radiogroup"] [data-testid="stMarkdownContainer"] p { font-size: .9rem; font-weight: 700; }
+    [data-testid="stRadioOption"] > div > div:first-child { display: none !important; }
+    .top-divider { height: 1px; background: var(--line); margin: .35rem 0 2.4rem; }
+    .eyebrow { color: var(--blue); font-size: .78rem; font-weight: 800; letter-spacing: .08em; }
+    .lead { color: var(--sub); font-size: 1.02rem; line-height: 1.65; max-width: 720px; margin-top: -.35rem; }
+    .demo-note {
+        display: inline-flex; align-items: center; gap: .45rem; color: var(--sub);
+        background: var(--surface); border-radius: 999px; padding: .42rem .72rem;
+        font-size: .76rem; margin: .3rem 0 1.1rem;
     }
-    .hero {
-        padding: 2.2rem 2.4rem;
-        border-radius: 26px;
-        background: linear-gradient(135deg, #5d4df4 0%, #8879ff 55%, #45c6ba 100%);
-        color: white;
-        box-shadow: 0 18px 45px rgba(78, 65, 210, .18);
-        margin-bottom: 1.25rem;
+    .home-summary {
+        background: linear-gradient(135deg, #edf5ff 0%, #f5f8ff 55%, #f3fbf8 100%);
+        border-radius: 28px; padding: 2rem 2.1rem; margin: .8rem 0 1.7rem;
     }
-    .hero .eyebrow { font-size: .84rem; letter-spacing: .12em; opacity: .82; font-weight: 700; }
-    .hero h1 { margin: .35rem 0 .4rem; font-size: 2.35rem; line-height: 1.15; }
-    .hero p { max-width: 760px; margin: 0; font-size: 1.04rem; opacity: .92; }
-    .notice {
-        background: #fff8dc; color: #725500; border: 1px solid #f3df8e;
-        padding: .72rem 1rem; border-radius: 12px; margin: .3rem 0 1rem;
+    .home-summary h2 { font-size: 1.65rem !important; margin: .35rem 0 1.4rem; }
+    .summary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem; }
+    .summary-stat { background: rgba(255,255,255,.82); border-radius: 16px; padding: 1rem; }
+    .summary-stat span { color: var(--sub); font-size: .76rem; display: block; margin-bottom: .3rem; }
+    .summary-stat b { font-size: 1.18rem; letter-spacing: -.03em; }
+    .section-head { margin-top: 2.4rem; margin-bottom: .75rem; }
+    .section-head h2 { margin: .25rem 0 .2rem; }
+    .section-head p { color: var(--sub); margin: 0; font-size: .9rem; }
+    .op-row { padding: 1.05rem .15rem; }
+    .op-tags { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .55rem; }
+    .pill {
+        display: inline-block; padding: .28rem .55rem; border-radius: 999px;
+        background: var(--surface); color: var(--sub); font-size: .72rem; font-weight: 700;
     }
-    .opportunity-card {
-        background: white; border: 1px solid #e8eaf2; border-radius: 18px;
-        padding: 1.05rem 1.1rem; min-height: 224px;
-        box-shadow: 0 8px 24px rgba(27, 31, 48, .055);
+    .pill.blue { background: var(--blue-soft); color: var(--blue); }
+    .pill.green { background: #e8f8f3; color: #008f69; }
+    .op-title { font-size: 1.06rem; font-weight: 800; letter-spacing: -.025em; margin-bottom: .35rem; }
+    .op-meta { color: var(--sub); font-size: .82rem; line-height: 1.55; }
+    .op-money { font-size: .88rem; font-weight: 800; color: var(--ink); margin-top: .45rem; }
+    .row-divider { height: 1px; background: var(--line); }
+    .soft-card { background: var(--surface); border-radius: 22px; padding: 1.35rem; min-height: 100%; }
+    .soft-card .label { color: var(--sub); font-size: .78rem; }
+    .soft-card .big { font-size: 1.45rem; font-weight: 800; letter-spacing: -.04em; margin: .35rem 0; }
+    .soft-card .desc { color: var(--sub); font-size: .82rem; line-height: 1.5; }
+    .progress-track { height: 10px; background: #dfe4ea; border-radius: 999px; overflow: hidden; margin: .9rem 0 .45rem; }
+    .progress-fill { height: 100%; background: var(--blue); border-radius: inherit; }
+    .progress-meta { display: flex; justify-content: space-between; color: var(--sub); font-size: .75rem; }
+    .detail-hero { padding: .5rem 0 1rem; }
+    .detail-hero h1 { margin: .55rem 0 .4rem; }
+    .detail-amount { font-size: 1.35rem; font-weight: 800; margin-top: 1.05rem; }
+    .fact-list { display: grid; gap: 0; }
+    .fact-row { display: flex; justify-content: space-between; gap: 1rem; padding: .9rem 0; border-bottom: 1px solid var(--line); }
+    .fact-row:last-child { border-bottom: 0; }
+    .fact-row span { color: var(--sub); font-size: .85rem; }
+    .fact-row b { font-size: .86rem; text-align: right; }
+    .reason-box { background: var(--blue-soft); border-radius: 18px; padding: 1.1rem; }
+    .reason-box b { display: block; color: var(--blue); margin-bottom: .4rem; }
+    .reason-box p { margin: 0; font-size: .86rem; line-height: 1.55; }
+    .goal-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.05em; }
+    .goal-sub { color: var(--sub); font-size: .85rem; }
+    .impact-card { background: #eef8f5; border-radius: 18px; padding: 1.05rem; margin-top: .8rem; }
+    .impact-card b { font-size: 1.05rem; }
+    .impact-card p { color: var(--sub); font-size: .82rem; margin: .35rem 0 0; }
+    .market-number { font-size: 2rem; font-weight: 800; letter-spacing: -.045em; }
+    .positive { color: var(--green) !important; font-weight: 800; }
+    .negative { color: var(--red) !important; font-weight: 800; }
+    .asset-row { padding: .8rem 0; }
+    .asset-name { font-size: 1rem; font-weight: 800; }
+    .asset-meta { color: var(--sub); font-size: .78rem; margin-top: .3rem; }
+    .asset-price { font-size: .95rem; font-weight: 800; text-align: right; }
+    .asset-delta { font-size: .76rem; text-align: right; margin-top: .25rem; }
+    .warning-box { background: #fff7e8; color: #8b5e00; border-radius: 16px; padding: .9rem 1rem; font-size: .82rem; line-height: 1.5; }
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--sub); background: var(--surface); border-radius: 22px; }
+    .footer-note { color: var(--sub); font-size: .76rem; margin-top: 3rem; text-align: center; }
+    .stButton > button, .stLinkButton > a {
+        border: 0 !important; border-radius: 12px !important; min-height: 42px;
+        font-weight: 800 !important; box-shadow: none !important;
     }
-    .tag {
-        display: inline-block; padding: .25rem .55rem; border-radius: 999px;
-        background: #efedff; color: #5545d9; font-size: .76rem; font-weight: 700;
-        margin-right: .3rem;
+    .stButton > button { background: var(--surface); color: var(--ink); }
+    .stButton > button:hover { background: #e8ebee; color: var(--ink); }
+    .stButton > button[kind="primary"] { background: var(--blue); color: #fff; }
+    .stButton > button[kind="primary"]:hover { background: #1b64da; color: #fff; }
+    .stLinkButton > a { background: var(--surface) !important; color: var(--ink) !important; }
+    [data-testid="stExpander"] { border: 0 !important; border-radius: 16px !important; background: var(--surface); }
+    [data-testid="stNumberInput"], [data-baseweb="select"] { border-radius: 12px; }
+    [data-testid="stVegaLiteChart"] { margin-top: -.4rem; }
+    @media (max-width: 760px) {
+        .block-container { padding-top: .65rem; }
+        h1 { font-size: 1.85rem !important; }
+        .summary-grid { grid-template-columns: 1fr; }
+        .home-summary { padding: 1.35rem; border-radius: 22px; }
+        div[role="radiogroup"] { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+        div[role="radiogroup"] label { white-space: nowrap; }
     }
-    .score { float: right; color: #3a2bc8; font-weight: 800; }
-    .opportunity-card h3 { font-size: 1.05rem; margin: .8rem 0 .35rem; color: #1f2533; }
-    .opportunity-card .meta { color: #697084; font-size: .86rem; margin-bottom: .7rem; }
-    .opportunity-card .money { color: #15806f; font-size: 1rem; font-weight: 800; }
-    .opportunity-card .reason { color: #555d70; font-size: .82rem; margin-top: .7rem; }
-    .asset-card {
-        background: white; border: 1px solid #e8eaf2; border-radius: 16px;
-        padding: .9rem 1rem; height: 100%;
-    }
-    .positive { color: #0b8c73; font-weight: 800; }
-    .negative { color: #d14b61; font-weight: 800; }
-    .section-kicker { color: #6656e8; font-size: .8rem; font-weight: 800; letter-spacing: .08em; }
-    div[data-testid="stMetric"] {
-        background: white; border: 1px solid #e7e9f1; padding: .85rem 1rem;
-        border-radius: 16px;
-    }
-    .footer-note { color: #777f92; font-size: .82rem; margin-top: 2rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -101,27 +163,31 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     return opportunities, savings, alternatives
 
 
-opportunities, savings, alternatives = load_data()
-if "favorites" not in st.session_state:
-    st.session_state.favorites = set()
+def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
+    defaults = {
+        "main_nav": "홈",
+        "favorites": set(),
+        "favorite_assets": set(),
+        "goal_opportunities": set(),
+        "selected_opportunity": str(opportunities.iloc[0]["id"]),
+        "selected_asset": str(alternatives.iloc[0]["id"]),
+        "asset_detail": False,
+        "profile_grade": 1,
+        "profile_residence": "전체",
+        "profile_hours": 6,
+        "profile_interests": [],
+        "target_amount": 1_500_000,
+        "current_amount": 300_000,
+        "remaining_months": 6,
+        "asset_period": "6개월",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
-def render_hero() -> None:
-    st.markdown(
-        """
-        <div class="hero">
-          <div class="eyebrow">CAMPUS MONEY GUIDE · DEMO</div>
-          <h1>돈을 넣기 전에, 마련할 기회부터.</h1>
-          <p>대학생에게 흩어진 장학·근로·공모전 기회를 모아 보여주고,
-          현재 상황에 맞는 저축과 관심 자산 탐색까지 연결합니다.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="notice">현재 화면의 공고와 금융상품은 기능 시연용 데모 데이터입니다. 실제 공고로 교체할 때는 원문과 최신 조건을 반드시 확인해야 합니다.</div>',
-        unsafe_allow_html=True,
-    )
+def clean_title(value: object) -> str:
+    return str(value).replace("[데모] ", "").strip()
 
 
 def opportunity_amount(row: pd.Series) -> str:
@@ -132,219 +198,563 @@ def opportunity_amount(row: pd.Series) -> str:
     return f"{format_money(minimum)} ~ {format_money(maximum)}"
 
 
-def render_opportunity(row: pd.Series, *, prefix: str) -> None:
-    deadline = pd.Timestamp(row["deadline"]).strftime("%m월 %d일")
+def deadline_label(value: object) -> str:
+    deadline = pd.Timestamp(value).date()
+    days = (deadline - date.today()).days
+    if days == 0:
+        return "오늘 마감"
+    if days > 0:
+        return f"D-{days}"
+    return "마감"
+
+
+def category_icon(category: str) -> str:
+    return {
+        "레고": "🧱",
+        "TCG": "🃏",
+        "시계": "⌚",
+        "스니커즈": "👟",
+        "와인": "🍷",
+    }.get(category, "◇")
+
+
+def go_to(page: str) -> None:
+    st.session_state.main_nav = page
+
+
+def open_opportunity(opportunity_id: str) -> None:
+    st.session_state.selected_opportunity = opportunity_id
+    st.session_state.main_nav = "경제기회"
+
+
+def toggle_opportunity(opportunity_id: str) -> None:
+    favorites = st.session_state.favorites
+    if opportunity_id in favorites:
+        favorites.remove(opportunity_id)
+    else:
+        favorites.add(opportunity_id)
+
+
+def add_to_goal(opportunity_id: str) -> None:
+    st.session_state.goal_opportunities.add(opportunity_id)
+    st.session_state[f"goal-check-{opportunity_id}"] = True
+    st.session_state.main_nav = "목표계획"
+
+
+def open_asset(asset_id: str) -> None:
+    st.session_state.selected_asset = asset_id
+    st.session_state.asset_detail = True
+    st.session_state.main_nav = "대체자산"
+
+
+def close_asset() -> None:
+    st.session_state.asset_detail = False
+
+
+def toggle_asset(asset_id: str) -> None:
+    favorites = st.session_state.favorite_assets
+    if asset_id in favorites:
+        favorites.remove(asset_id)
+    else:
+        favorites.add(asset_id)
+
+
+def sync_goal_check(opportunity_id: str, key: str) -> None:
+    if st.session_state[key]:
+        st.session_state.goal_opportunities.add(opportunity_id)
+    else:
+        st.session_state.goal_opportunities.discard(opportunity_id)
+
+
+def render_section_head(kicker: str, title: str, description: str = "") -> None:
+    desc = f"<p>{escape(description)}</p>" if description else ""
+    st.markdown(
+        f'<div class="section-head"><div class="eyebrow">{escape(kicker)}</div>'
+        f'<h2>{escape(title)}</h2>{desc}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_price_chart(history: pd.DataFrame, *, height: int = 260, compact: bool = False) -> None:
+    color = "#00a77b" if history.iloc[-1]["price"] >= history.iloc[0]["price"] else "#f04452"
+    chart = {
+        "height": height,
+        "layer": [
+            {
+                "mark": {"type": "area", "line": False, "color": color, "opacity": 0.08},
+                "encoding": {
+                    "x": {"field": "date", "type": "temporal", "axis": None if compact else {"title": None, "format": "%m월", "labelColor": "#8b95a1", "grid": False}},
+                    "y": {"field": "price", "type": "quantitative", "axis": None if compact else {"title": None, "labelColor": "#8b95a1", "gridColor": "#f2f4f6", "format": ",.0f", "tickCount": 4}, "scale": {"zero": False}},
+                },
+            },
+            {
+                "mark": {"type": "line", "color": color, "strokeWidth": 2.5},
+                "encoding": {
+                    "x": {"field": "date", "type": "temporal", "axis": None},
+                    "y": {"field": "price", "type": "quantitative", "axis": None, "scale": {"zero": False}},
+                    "tooltip": [
+                        {"field": "date", "type": "temporal", "title": "기준일", "format": "%Y-%m-%d"},
+                        {"field": "price", "type": "quantitative", "title": "가격", "format": ",.0f"},
+                    ],
+                },
+            },
+        ],
+        "config": {"view": {"stroke": None}},
+    }
+    st.vega_lite_chart(history, chart, use_container_width=True)
+
+
+def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = True) -> None:
+    opportunity_id = str(row["id"])
+    title = escape(clean_title(row["title"]))
+    amount = escape(opportunity_amount(row))
+    reason = escape(str(row.get("match_reason", row["summary"])))
+    left, right = st.columns([4.2, 1.15], vertical_alignment="center")
+    with left:
+        st.markdown(
+            f"""
+            <div class="op-row">
+              <div class="op-tags">
+                <span class="pill blue">{escape(str(row['category']))}</span>
+                <span class="pill">{escape(deadline_label(row['deadline']))}</span>
+                <span class="pill green">{int(row.get('match_score', 0))}% 일치</span>
+              </div>
+              <div class="op-title">{title}</div>
+              <div class="op-meta">{escape(str(row['organization']))} · {reason}</div>
+              <div class="op-money">{escape(str(row['benefit_type']))} · {amount}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    if show_actions:
+        with right:
+            st.button(
+                "자세히 보기",
+                key=f"{prefix}-open-{opportunity_id}",
+                use_container_width=True,
+                on_click=open_opportunity,
+                args=(opportunity_id,),
+            )
+            favorite = opportunity_id in st.session_state.favorites
+            st.button(
+                "저장됨 ✓" if favorite else "관심 저장",
+                key=f"{prefix}-fav-{opportunity_id}",
+                use_container_width=True,
+                on_click=toggle_opportunity,
+                args=(opportunity_id,),
+            )
+    st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
+
+
+def render_header() -> str:
+    brand, navigation = st.columns([.42, 1.58], vertical_alignment="center")
+    with brand:
+        st.markdown(
+            """
+            <div class="brand">
+              <div class="brand-mark">CM</div>
+              <div><div class="brand-name">Campus Money</div><div class="brand-sub">대학생 경제기회 가이드</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with navigation:
+        page = st.radio(
+            "주요 화면",
+            NAV_ITEMS,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="main_nav",
+        )
+    st.markdown('<div class="top-divider"></div>', unsafe_allow_html=True)
+    return page
+
+
+def render_profile_controls(opportunities: pd.DataFrame) -> None:
+    with st.expander("내 조건 수정 · 추천 기준 보기"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.selectbox("학년", [1, 2, 3, 4], key="profile_grade")
+        with c2:
+            st.selectbox("거주 형태", ["전체", "기숙사", "자취"], key="profile_residence")
+        with c3:
+            st.slider("주당 활동 가능 시간", 0, 20, key="profile_hours")
+        categories = sorted(opportunities["category"].unique().tolist())
+        st.multiselect("관심 있는 기회", categories, key="profile_interests")
+        st.caption("이 조건은 추천 순서에만 사용되며 별도로 저장하지 않습니다.")
+
+
+def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
+    eligible = ranked[ranked["eligible"]]
+    nearest = eligible.iloc[0] if not eligible.empty else ranked.iloc[0]
+    noncompetitive = eligible[eligible["competition"] != "경쟁형"]
+    max_benefit = int(noncompetitive["amount_max"].max()) if not noncompetitive.empty else 0
+    st.markdown('<div class="eyebrow">FOR YOUR CAMPUS LIFE</div>', unsafe_allow_html=True)
+    st.title("돈을 모으기 전에,\n받을 수 있는 기회부터 찾아보세요")
+    st.markdown(
+        '<div class="lead">장학·근로·공모전처럼 흩어진 경제기회를 내 조건에 맞춰 보고, '
+        '목표금액과 저축·관심 자산 탐색까지 한 흐름으로 연결합니다.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="demo-note">● 현재 공고와 시세는 화면 검증용 데모 데이터입니다</div>', unsafe_allow_html=True)
+    render_profile_controls(ranked)
+
     st.markdown(
         f"""
-        <div class="opportunity-card">
-          <span class="tag">{row['category']}</span>
-          <span class="tag">{row['competition']}</span>
-          <span class="score">{int(row.get('match_score', 0))}%</span>
-          <h3>{row['title']}</h3>
-          <div class="meta">{row['organization']} · 마감 {deadline} · {row['duration']}</div>
-          <div class="money">{row['benefit_type']} · {opportunity_amount(row)}</div>
-          <div class="reason">{row.get('match_reason', row['summary'])}</div>
+        <div class="home-summary">
+          <div class="eyebrow">오늘의 경제기회 요약</div>
+          <h2>{int(st.session_state.profile_grade)}학년 조건에서 확인할 기회가 {int(eligible.shape[0])}개 있어요</h2>
+          <div class="summary-grid">
+            <div class="summary-stat"><span>가장 가까운 마감</span><b>{escape(clean_title(nearest['title']))} · {escape(deadline_label(nearest['deadline']))}</b></div>
+            <div class="summary-stat"><span>가장 큰 비경쟁형 혜택</span><b>{format_money(max_benefit)}</b></div>
+            <div class="summary-stat"><span>관심 목록</span><b>{len(st.session_state.favorites) + len(st.session_state.favorite_assets)}개 저장됨</b></div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    render_section_head("RECOMMENDED", "지금 확인할 경제기회", "내 조건과 마감일을 함께 반영한 추천입니다.")
+    for _, row in eligible.head(3).iterrows():
+        render_opportunity_row(row, prefix="home")
+    st.button("경제기회 전체 보기", use_container_width=True, on_click=go_to, args=("경제기회",))
+
+    render_section_head("NEXT STEP", "모은 돈의 다음 경로", "목표가 있다면 계획하고, 관심이 있다면 시장을 탐색하세요.")
+    goal_col, market_col = st.columns(2, gap="large")
+    target = int(st.session_state.target_amount)
+    current = int(st.session_state.current_amount)
+    progress = min(current / target, 1.0) if target else 0
+    with goal_col:
+        st.markdown(
+            f"""
+            <div class="soft-card">
+              <div class="label">나의 선택형 목표</div>
+              <div class="big">목표까지 {format_money(max(target-current, 0))}</div>
+              <div class="desc">기회를 목표에 담으면 매달 필요한 저축액이 어떻게 달라지는지 보여드려요.</div>
+              <div class="progress-track"><div class="progress-fill" style="width:{progress*100:.0f}%"></div></div>
+              <div class="progress-meta"><span>{format_money(current)}</span><span>{format_money(target)}</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button("목표계획 열기", key="home-goal", type="primary", use_container_width=True, on_click=go_to, args=("목표계획",))
+    with market_col:
+        market = build_market_index(alternatives)
+        change = (market.iloc[-1]["price"] / market.iloc[0]["price"] - 1) * 100
+        st.markdown(
+            f"""
+            <div class="soft-card">
+              <div class="label">대체자산 시장지수 · 6개월</div>
+              <div class="big">{market.iloc[-1]['price']:,.1f} <span class="{'positive' if change >= 0 else 'negative'}" style="font-size:.88rem">{change:+.1f}%</span></div>
+              <div class="desc">레고·TCG·시계·스니커즈·와인 시세의 흐름을 같은 기준으로 비교합니다.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button("대체자산 둘러보기", key="home-market", use_container_width=True, on_click=go_to, args=("대체자산",))
+
+
+def render_opportunity_detail(ranked: pd.DataFrame) -> None:
+    selected_id = st.session_state.selected_opportunity
+    matches = ranked[ranked["id"].astype(str) == selected_id]
+    row = matches.iloc[0] if not matches.empty else ranked.iloc[0]
     opportunity_id = str(row["id"])
-    is_favorite = opportunity_id in st.session_state.favorites
-    source_url = row.get("source_url")
-    has_source = isinstance(source_url, str) and source_url.startswith("http")
-    action_columns = st.columns([1, 0.72]) if has_source else [st.container()]
-    with action_columns[0]:
-        if st.button(
-            "★ 관심 목록에서 제거" if is_favorite else "☆ 관심 기회로 저장",
-            key=f"{prefix}-{opportunity_id}",
+    deadline = pd.Timestamp(row["deadline"]).strftime("%Y년 %m월 %d일")
+
+    st.markdown('<div class="eyebrow">OPPORTUNITY DETAIL</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="detail-hero">
+          <div class="op-tags"><span class="pill blue">{escape(str(row['category']))}</span><span class="pill">{escape(deadline_label(row['deadline']))}</span><span class="pill green">{int(row['match_score'])}% 일치</span></div>
+          <h1>{escape(clean_title(row['title']))}</h1>
+          <div class="lead">{escape(str(row['organization']))} · {escape(str(row['summary']))}</div>
+          <div class="detail-amount">{escape(str(row['benefit_type']))} · {escape(opportunity_amount(row))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    info, action = st.columns([1.65, 1], gap="large")
+    with info:
+        st.markdown(
+            f"""
+            <div class="fact-list">
+              <div class="fact-row"><span>신청 대상</span><b>{escape(str(row['eligible_grades']).replace('|', '·'))}학년</b></div>
+              <div class="fact-row"><span>마감일</span><b>{deadline}</b></div>
+              <div class="fact-row"><span>활동 기간</span><b>{escape(str(row['duration']))}</b></div>
+              <div class="fact-row"><span>주당 활동시간</span><b>{int(row['weekly_hours'])}시간</b></div>
+              <div class="fact-row"><span>선발 방식</span><b>{escape(str(row['competition']))}</b></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with action:
+        st.markdown(
+            f'<div class="reason-box"><b>나에게 추천된 이유</b><p>{escape(str(row["match_reason"]))}</p></div>',
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "목표계획에 담기",
+            key=f"detail-goal-{opportunity_id}",
+            type="primary",
             use_container_width=True,
-        ):
-            if is_favorite:
-                st.session_state.favorites.remove(opportunity_id)
-            else:
-                st.session_state.favorites.add(opportunity_id)
-            st.rerun()
-    if has_source:
-        with action_columns[1]:
-            st.link_button("원문 보기", source_url, use_container_width=True)
+            on_click=add_to_goal,
+            args=(opportunity_id,),
+        )
+        favorite = opportunity_id in st.session_state.favorites
+        st.button(
+            "관심 목록에서 제거" if favorite else "관심 기회로 저장",
+            key=f"detail-fav-{opportunity_id}",
+            use_container_width=True,
+            on_click=toggle_opportunity,
+            args=(opportunity_id,),
+        )
+        source_url = row.get("source_url")
+        if isinstance(source_url, str) and source_url.startswith("http"):
+            st.link_button("공식 공고 확인", source_url, use_container_width=True)
+        else:
+            st.caption("실데이터 교체 시 공식 공고 링크가 표시됩니다.")
+
+    render_section_head("MORE FOR YOU", "다른 추천 기회")
+    for _, other in ranked[ranked["id"] != row["id"]].head(4).iterrows():
+        render_opportunity_row(other, prefix="detail-list")
 
 
-with st.sidebar:
-    st.markdown("## 🌱 나의 기본 조건")
-    grade = st.selectbox("학년", [1, 2, 3, 4], index=0)
-    residence = st.selectbox("거주 형태", ["전체", "기숙사", "자취"], index=0)
-    available_hours = st.slider("주당 활동 가능한 시간", 0, 20, 6)
-    categories = sorted(opportunities["category"].unique().tolist())
-    interests = st.multiselect("관심 있는 기회", categories)
-    st.markdown("---")
-    st.caption("입력한 조건은 추천 순서를 정하는 데만 사용되며 서버에 저장하지 않습니다.")
+def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings: pd.DataFrame) -> None:
+    st.markdown('<div class="eyebrow">GOAL PLAN</div>', unsafe_allow_html=True)
+    st.title("기회를 목표금액으로 연결해보세요")
+    st.markdown('<div class="lead">목표는 선택사항입니다. 경쟁형 상금은 확정 수입과 분리해서 계산합니다.</div>', unsafe_allow_html=True)
 
+    with st.expander("목표 금액과 기간 수정", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.number_input("목표 금액", min_value=100_000, step=100_000, key="target_amount")
+        with c2:
+            st.number_input("현재 보유 금액", min_value=0, step=50_000, key="current_amount")
+        with c3:
+            st.number_input("남은 기간(개월)", min_value=1, max_value=60, key="remaining_months")
+
+    render_section_head("INCOME PATH", "목표에 반영할 경제기회", "확정 가능성이 있는 기회와 경쟁형 기회를 구분합니다.")
+    eligible = ranked[ranked["eligible"]].head(6)
+    checkbox_cols = st.columns(2)
+    for index, (_, row) in enumerate(eligible.iterrows()):
+        opportunity_id = str(row["id"])
+        key = f"goal-check-{opportunity_id}"
+        if key not in st.session_state:
+            st.session_state[key] = opportunity_id in st.session_state.goal_opportunities
+        with checkbox_cols[index % 2]:
+            st.checkbox(
+                f"{clean_title(row['title'])} · {opportunity_amount(row)}",
+                key=key,
+                on_change=sync_goal_check,
+                args=(opportunity_id, key),
+            )
+
+    selected = opportunities[opportunities["id"].astype(str).isin(st.session_state.goal_opportunities)]
+    plan = calculate_goal_plan(
+        selected,
+        target_amount=int(st.session_state.target_amount),
+        current_amount=int(st.session_state.current_amount),
+        remaining_months=int(st.session_state.remaining_months),
+    )
+    contribution = plan.current_amount + plan.expected_min
+    progress = min(contribution / plan.target_amount, 1.0) if plan.target_amount else 0
+
+    render_section_head("PLAN RESULT", "현재 계획으로 가능한 경로")
+    result, impact = st.columns([1.4, 1], gap="large")
+    with result:
+        st.markdown(
+            f"""
+            <div class="soft-card">
+              <div class="label">목표까지 남은 금액</div>
+              <div class="goal-total">{format_money(plan.base_gap)}</div>
+              <div class="goal-sub">현재 금액과 비경쟁형 기회의 최소 금액을 반영했습니다.</div>
+              <div class="progress-track"><div class="progress-fill" style="width:{progress*100:.0f}%"></div></div>
+              <div class="progress-meta"><span>{progress*100:.0f}% 마련 가능</span><span>{format_money(plan.target_amount)}</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with impact:
+        st.markdown(
+            f"""
+            <div class="soft-card">
+              <div class="label">매달 필요한 저축액</div>
+              <div class="goal-total">{format_money(plan.monthly_required)}</div>
+              <div class="impact-card"><b>경제기회 예상 {format_money(plan.expected_min)} ~ {format_money(plan.expected_max)}</b><p>도전 가능한 경쟁형 상금은 최대 {format_money(plan.challenge_max)}이며 기본 계획에는 포함하지 않았어요.</p></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    render_section_head("SAVINGS", "내 계획에 가까운 적금", "최고금리보다 기간·월 납입 가능 여부를 먼저 봅니다.")
+    recommendations = recommend_savings(
+        savings,
+        remaining_months=int(st.session_state.remaining_months),
+        monthly_budget=int(plan.monthly_required),
+    ).head(3)
+    for _, product in recommendations.iterrows():
+        name, rate, condition = st.columns([2.3, 1, 1.7], vertical_alignment="center")
+        with name:
+            st.markdown(f"**{escape(clean_title(product['name']))}**  \n<span style='color:#6b7684;font-size:.8rem'>{escape(str(product['provider']))} · {int(product['term_months'])}개월 · 월 {format_money(product['min_monthly'])}부터</span>", unsafe_allow_html=True)
+        with rate:
+            st.markdown(f"<div style='text-align:right'><b>최고 {product['max_rate']:.1f}%</b><br><span style='color:#6b7684;font-size:.75rem'>기본 {product['base_rate']:.1f}%</span></div>", unsafe_allow_html=True)
+        with condition:
+            st.markdown(f"<div style='color:#6b7684;font-size:.78rem'>{escape(str(product['conditions']))}</div>", unsafe_allow_html=True)
+        st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
+
+
+def render_asset_list(alternatives: pd.DataFrame) -> None:
+    st.markdown('<div class="eyebrow">ALTERNATIVE MARKET</div>', unsafe_allow_html=True)
+    st.title("낯선 자산도, 가격 흐름부터 편하게")
+    st.markdown('<div class="lead">구매 추천이 아니라 여러 수집형 자산의 시세·변동성·환금성을 같은 형식으로 비교합니다.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="demo-note">● 모든 가격은 UI 검증을 위한 예시이며 실제 투자 판단에 사용할 수 없습니다</div>', unsafe_allow_html=True)
+
+    categories = ["전체"] + alternatives["category"].drop_duplicates().tolist()
+    category = st.radio("자산 종류", categories, horizontal=True, label_visibility="collapsed", key="asset_category")
+    view = alternatives if category == "전체" else alternatives[alternatives["category"] == category]
+    market = build_market_index(view)
+    change = (market.iloc[-1]["price"] / market.iloc[0]["price"] - 1) * 100
+    change_class = "positive" if change >= 0 else "negative"
+    st.markdown(
+        f'<div class="section-head"><div class="eyebrow">MARKET INDEX · 6 MONTHS</div><div class="market-number">{market.iloc[-1]["price"]:,.1f} '
+        f'<span class="{change_class}" style="font-size:1rem">{change:+.1f}%</span></div><p>{escape(category)} 자산을 100에서 시작한 지수로 환산한 데모입니다.</p></div>',
+        unsafe_allow_html=True,
+    )
+    render_price_chart(market, height=230)
+
+    render_section_head("ASSETS", "시세를 확인할 품목")
+    for _, asset in view.iterrows():
+        asset_id = str(asset["id"])
+        history = build_price_history(asset["current_price"], asset["change_6m"], seed_key=asset_id)
+        info, spark, price, action = st.columns([2.2, 1.45, 1.05, .95], vertical_alignment="center")
+        with info:
+            st.markdown(
+                f'<div class="asset-row"><div class="asset-name">{category_icon(str(asset["category"]))} {escape(clean_title(asset["item"]))}</div>'
+                f'<div class="asset-meta">{escape(str(asset["category"]))} · 위험 {escape(str(asset["risk"]))} · 환금성 {escape(str(asset["liquidity"]))}</div></div>',
+                unsafe_allow_html=True,
+            )
+        with spark:
+            render_price_chart(history, height=64, compact=True)
+        with price:
+            trend_class = "positive" if asset["change_6m"] >= 0 else "negative"
+            st.markdown(
+                f'<div class="asset-price">{format_money(asset["current_price"])}</div><div class="asset-delta {trend_class}">6개월 {asset["change_6m"]:+.1f}%</div>',
+                unsafe_allow_html=True,
+            )
+        with action:
+            st.button("시세 보기", key=f"asset-open-{asset_id}", use_container_width=True, on_click=open_asset, args=(asset_id,))
+        st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
+
+
+def render_asset_detail(alternatives: pd.DataFrame) -> None:
+    matches = alternatives[alternatives["id"].astype(str) == st.session_state.selected_asset]
+    asset = matches.iloc[0] if not matches.empty else alternatives.iloc[0]
+    asset_id = str(asset["id"])
+    history = build_price_history(asset["current_price"], asset["change_6m"], seed_key=asset_id)
+    trend_class = "positive" if asset["change_6m"] >= 0 else "negative"
+
+    st.button("← 시장으로 돌아가기", key="asset-back", on_click=close_asset)
+    st.markdown(
+        f"""
+        <div class="detail-hero">
+          <div class="op-tags"><span class="pill blue">{escape(str(asset['category']))}</span><span class="pill">6개월 시세</span></div>
+          <h1>{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}</h1>
+          <div class="lead">{escape(str(asset['summary']))}</div>
+          <div class="detail-amount">{format_money(asset['current_price'])} <span class="{trend_class}" style="font-size:1rem">6개월 {asset['change_6m']:+.1f}%</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    periods = {"1개월": 5, "3개월": 13, "6개월": 26}
+    period = st.radio("조회 기간", list(periods), horizontal=True, label_visibility="collapsed", key="asset_period")
+    chart_data = history.tail(periods[period]).reset_index(drop=True)
+    render_price_chart(chart_data, height=330)
+
+    low = int(chart_data["price"].min())
+    high = int(chart_data["price"].max())
+    c1, c2, c3, c4 = st.columns(4)
+    facts = [
+        ("기간 내 최저", format_money(low)),
+        ("기간 내 최고", format_money(high)),
+        ("환금성", str(asset["liquidity"])),
+        ("위험도", str(asset["risk"])),
+    ]
+    for column, (label, value) in zip([c1, c2, c3, c4], facts):
+        with column:
+            st.markdown(f'<div class="soft-card"><div class="label">{escape(label)}</div><div class="big" style="font-size:1.05rem">{escape(value)}</div></div>', unsafe_allow_html=True)
+
+    favorite = asset_id in st.session_state.favorite_assets
+    st.button(
+        "관심 자산에서 제거" if favorite else "관심 자산에 추가",
+        key=f"asset-fav-{asset_id}",
+        type="primary",
+        use_container_width=True,
+        on_click=toggle_asset,
+        args=(asset_id,),
+    )
+    st.markdown('<div class="warning-box">대체자산은 거래량이 적고 상태·진품 여부·보관 비용에 따라 실제 가격 차이가 큽니다. 이 화면은 가격 탐색 방식을 보여주는 데모이며 매수 추천이 아닙니다.</div>', unsafe_allow_html=True)
+
+
+def render_favorites(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
+    st.markdown('<div class="eyebrow">SAVED</div>', unsafe_allow_html=True)
+    st.title("다시 보고 싶은 기회와 자산")
+    opportunity_tab, asset_tab = st.tabs(["경제기회", "대체자산"])
+    with opportunity_tab:
+        favorites = ranked[ranked["id"].astype(str).isin(st.session_state.favorites)]
+        if favorites.empty:
+            st.markdown('<div class="empty-state">저장한 경제기회가 없습니다.<br>추천 목록에서 관심 기회를 저장해보세요.</div>', unsafe_allow_html=True)
+        else:
+            for _, row in favorites.iterrows():
+                render_opportunity_row(row, prefix="saved")
+    with asset_tab:
+        favorite_assets = alternatives[alternatives["id"].astype(str).isin(st.session_state.favorite_assets)]
+        if favorite_assets.empty:
+            st.markdown('<div class="empty-state">저장한 대체자산이 없습니다.<br>시세 상세에서 관심 자산을 추가해보세요.</div>', unsafe_allow_html=True)
+        else:
+            for _, asset in favorite_assets.iterrows():
+                info, action = st.columns([4, 1], vertical_alignment="center")
+                with info:
+                    st.markdown(f"**{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}**  \n{format_money(asset['current_price'])} · 6개월 {asset['change_6m']:+.1f}%")
+                with action:
+                    st.button("시세 보기", key=f"saved-asset-{asset['id']}", use_container_width=True, on_click=open_asset, args=(str(asset["id"]),))
+                st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
+
+
+opportunities, savings, alternatives = load_data()
+init_state(opportunities, alternatives)
 
 ranked = rank_opportunities(
     opportunities,
-    grade=grade,
-    residence=residence,
-    available_hours=available_hours,
-    interests=interests,
+    grade=int(st.session_state.profile_grade),
+    residence=str(st.session_state.profile_residence),
+    available_hours=int(st.session_state.profile_hours),
+    interests=list(st.session_state.profile_interests),
 )
 
-render_hero()
-
-nav = st.radio(
-    "화면 이동",
-    ["맞춤 추천", "목표 시뮬레이션", "관심 목록", "프로젝트 소개"],
-    horizontal=True,
-    label_visibility="collapsed",
-)
-
-if nav == "맞춤 추천":
-    st.markdown('<div class="section-kicker">PERSONALIZED OPPORTUNITIES</div>', unsafe_allow_html=True)
-    st.subheader(f"{grade}학년에게 먼저 보여드릴 기회")
-    eligible_count = int(ranked["eligible"].sum())
-    m1, m2, m3 = st.columns(3)
-    m1.metric("조건에 맞는 기회", f"{eligible_count}개")
-    m2.metric("가장 가까운 마감", ranked.iloc[0]["deadline"].strftime("%m월 %d일"))
-    m3.metric("저장한 관심 기회", f"{len(st.session_state.favorites)}개")
-
-    show_only_eligible = st.toggle("조건에 맞는 기회만 보기", value=True)
-    view = ranked[ranked["eligible"]] if show_only_eligible else ranked
-    if view.empty:
-        st.info("현재 조건과 정확히 일치하는 기회가 없습니다. 활동 가능 시간을 늘리거나 필터를 완화해보세요.")
+page = render_header()
+if page == "홈":
+    render_home(ranked, alternatives)
+elif page == "경제기회":
+    render_opportunity_detail(ranked)
+elif page == "목표계획":
+    render_goal_plan(ranked, opportunities, savings)
+elif page == "대체자산":
+    if st.session_state.asset_detail:
+        render_asset_detail(alternatives)
     else:
-        for start in range(0, min(len(view), 9), 3):
-            columns = st.columns(3)
-            for column, (_, row) in zip(columns, view.iloc[start : start + 3].iterrows()):
-                with column:
-                    render_opportunity(row, prefix="rec")
+        render_asset_list(alternatives)
+elif page == "관심목록":
+    render_favorites(ranked, alternatives)
 
-    st.divider()
-    st.markdown('<div class="section-kicker">NEXT STEP</div>', unsafe_allow_html=True)
-    st.subheader("여유자금이 생겼다면, 다음 선택지를 비교하세요")
-    left, right = st.columns([1.15, 1])
-    with left:
-        st.markdown("#### 안전하게 모으기")
-        top_savings = savings.sort_values("max_rate", ascending=False).head(3)
-        for _, product in top_savings.iterrows():
-            st.markdown(
-                f"**{product['name']}** · {int(product['term_months'])}개월  \n"
-                f"기본 {product['base_rate']:.1f}% / 최고 {product['max_rate']:.1f}% · {product['conditions']}"
-            )
-            st.caption(product["description"])
-    with right:
-        st.markdown("#### 관심 자산 탐색")
-        st.caption("구매 추천이 아닌 가격·변동성 정보입니다.")
-        for _, asset in alternatives.head(3).iterrows():
-            trend_class = "positive" if asset["change_6m"] >= 0 else "negative"
-            sign = "+" if asset["change_6m"] >= 0 else ""
-            st.markdown(
-                f"""
-                <div class="asset-card">
-                  <b>{asset['item']}</b> <span class="tag">{asset['category']}</span><br>
-                  {format_money(asset['current_price'])} ·
-                  <span class="{trend_class}">6개월 {sign}{asset['change_6m']:.1f}%</span><br>
-                  <small>위험 {asset['risk']} · 환금성 {asset['liquidity']}</small>
-                </div><br>
-                """,
-                unsafe_allow_html=True,
-            )
-
-elif nav == "목표 시뮬레이션":
-    st.markdown('<div class="section-kicker">OPTIONAL GOAL PLANNER</div>', unsafe_allow_html=True)
-    st.subheader("목표가 있다면, 선택한 기회가 얼마나 도움이 되는지 확인하세요")
-    st.caption("목표 금액 입력은 선택 기능입니다. 경쟁형 공모전 상금은 기본 계획과 분리합니다.")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        target_amount = st.number_input("목표 금액", min_value=100_000, value=2_000_000, step=100_000)
-    with c2:
-        current_amount = st.number_input("현재 보유 금액", min_value=0, value=300_000, step=50_000)
-    with c3:
-        remaining_months = st.number_input("남은 기간(개월)", min_value=1, max_value=60, value=8)
-
-    options = {
-        f"{row['title']} · {opportunity_amount(row)}": row["id"]
-        for _, row in ranked[ranked["eligible"]].iterrows()
-    }
-    selected_labels = st.multiselect("계획에 넣어볼 경제기회", list(options.keys()))
-    selected_ids = [options[label] for label in selected_labels]
-    selected = opportunities[opportunities["id"].isin(selected_ids)]
-
-    plan = calculate_goal_plan(
-        selected,
-        target_amount=int(target_amount),
-        current_amount=int(current_amount),
-        remaining_months=int(remaining_months),
-    )
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("추가 필요 금액", format_money(max(plan.target_amount - plan.current_amount, 0)))
-    m2.metric("선택 기회 예상", f"{format_money(plan.expected_min)} ~ {format_money(plan.expected_max)}")
-    m3.metric("월 필요 금액", format_money(plan.monthly_required))
-    m4.metric("도전 가능 상금", format_money(plan.challenge_max))
-
-    base_progress = min((plan.current_amount + plan.expected_min) / plan.target_amount, 1.0)
-    st.progress(base_progress, text=f"현재 금액과 비경쟁형 기회를 반영한 목표 기여도 {base_progress * 100:.0f}%")
-
-    if plan.challenge_max:
-        st.info(
-            f"경쟁형 공모전까지 모두 성과가 난 낙관 시나리오의 부족 금액은 "
-            f"{format_money(plan.optimistic_gap)}입니다. 상금은 기본 계획에는 포함하지 않았습니다."
-        )
-
-    st.divider()
-    st.subheader("목표 기간과 월 금액에 가까운 데모 적금")
-    recommended_savings = recommend_savings(
-        savings,
-        remaining_months=int(remaining_months),
-        monthly_budget=int(plan.monthly_required),
-    ).head(3)
-    for _, product in recommended_savings.iterrows():
-        with st.container(border=True):
-            st.markdown(f"### {product['name']}")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("기간", f"{int(product['term_months'])}개월")
-            c2.metric("최고금리(데모)", f"{product['max_rate']:.1f}%")
-            c3.metric("최소 월납입", format_money(product["min_monthly"]))
-            st.write(product["description"])
-            st.caption(f"조건: {product['conditions']}")
-
-elif nav == "관심 목록":
-    st.markdown('<div class="section-kicker">SAVED OPPORTUNITIES</div>', unsafe_allow_html=True)
-    st.subheader("나중에 다시 확인할 기회")
-    favorites = ranked[ranked["id"].isin(st.session_state.favorites)]
-    if favorites.empty:
-        st.info("아직 저장한 기회가 없습니다. 맞춤 추천에서 별표 버튼을 눌러보세요.")
-    else:
-        for start in range(0, len(favorites), 3):
-            columns = st.columns(3)
-            for column, (_, row) in zip(columns, favorites.iloc[start : start + 3].iterrows()):
-                with column:
-                    render_opportunity(row, prefix="fav")
-
-elif nav == "프로젝트 소개":
-    st.markdown('<div class="section-kicker">ABOUT THE PROJECT</div>', unsafe_allow_html=True)
-    st.subheader("대학생의 첫 경제적 기회를 한곳에")
+with st.expander("프로젝트 소개와 데이터 안내"):
     st.write(
         "기존 자산관리 서비스가 이미 가진 돈을 어디에 넣을지 안내한다면, "
-        "이 프로젝트는 대학생이 장학·근로·공모전 등으로 돈을 마련하는 단계부터 시작합니다."
+        "Campus Money Guide는 대학생이 장학·근로·공모전으로 돈을 마련하는 단계부터 시작합니다."
     )
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("### ① 기회 탐색")
-        st.write("학교 여러 게시판에 흩어진 경제기회를 공통 형식으로 모읍니다.")
-    with c2:
-        st.markdown("### ② 조건 추천")
-        st.write("학년·거주·활동시간을 기준으로 설명 가능한 규칙형 추천을 제공합니다.")
-    with c3:
-        st.markdown("### ③ 다음 선택")
-        st.write("선택적인 목표 계산 뒤 적금과 수집형 자산 정보를 이어서 보여줍니다.")
-
-    st.divider()
-    st.markdown("#### 이번 MVP에서 의도적으로 제외한 기능")
-    st.write("실제 계좌 연동 · 회원가입 · 실시간 크롤링 · 투자수익 예측 · 메인 챗봇")
-    st.markdown("#### 다음 개발 단계")
-    st.write("실제 교내 공고 크롤러 연결 → 출처 검수 → 추천 규칙 보완 → 배포 및 발표 시나리오 테스트")
+    st.caption("현재 MVP에서는 회원가입, 계좌 연동, 자동 매수, 투자수익 예측을 제공하지 않습니다.")
 
 st.markdown(
-    f'<div class="footer-note">데모 기준일 {date.today().isoformat()} · 모든 금액과 상품 정보는 기능 검증용 예시입니다.</div>',
+    f'<div class="footer-note">Campus Money Guide · 데모 기준일 {date.today().isoformat()} · 원문과 최신 조건을 반드시 확인하세요.</div>',
     unsafe_allow_html=True,
 )
