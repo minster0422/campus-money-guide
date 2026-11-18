@@ -37,21 +37,23 @@ st.markdown(
         --red: #f04452;
     }
     .stApp { background: #ffffff; color: var(--ink); }
-    .block-container { max-width: 1120px; padding-top: 1.25rem; padding-bottom: 4rem; }
-    [data-testid="stHeader"] { background: rgba(255,255,255,.92); }
-    [data-testid="stToolbar"], #MainMenu, footer { visibility: hidden; }
+    .block-container { max-width: 1120px; padding: 1.35rem 1.5rem 4.5rem; }
+    [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"], #MainMenu, footer { display: none !important; }
+    .stAppViewContainer > .main { padding-top: 0 !important; }
+    h1 a, h2 a, h3 a, [data-testid="stHeaderActionElements"] { display: none !important; }
     h1, h2, h3 { color: var(--ink); letter-spacing: -.035em; }
     h1 { font-size: 2.35rem !important; line-height: 1.2 !important; }
     h2 { font-size: 1.55rem !important; }
     h3 { font-size: 1.08rem !important; }
     p { color: var(--ink); }
-    .brand { display: flex; align-items: center; gap: .65rem; min-height: 42px; }
+    .brand { display: flex; align-items: center; gap: .7rem; min-height: 42px; }
     .brand-mark {
         width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
         background: var(--blue); color: #fff; font-weight: 800; font-size: .9rem;
     }
-    .brand-name { color: var(--ink); font-weight: 800; letter-spacing: -.03em; }
-    .brand-sub { color: var(--sub); font-size: .72rem; }
+    .brand-name { color: var(--ink); font-size: .98rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; }
+    .brand-sub { color: var(--sub); font-size: .72rem; line-height: 1.35; margin-top: .12rem; }
     div[role="radiogroup"] { gap: .25rem; justify-content: flex-end; }
     div[role="radiogroup"] label {
         background: transparent; padding: .5rem .68rem; border-radius: 10px;
@@ -62,9 +64,12 @@ st.markdown(
     div[role="radiogroup"] label:has(input:checked) p { color: #fff !important; }
     div[role="radiogroup"] [data-testid="stMarkdownContainer"] p { font-size: .9rem; font-weight: 700; }
     [data-testid="stRadioOption"] > div > div:first-child { display: none !important; }
-    .top-divider { height: 1px; background: var(--line); margin: .35rem 0 2.4rem; }
+    .top-divider { height: 1px; background: var(--line); margin: .6rem 0 2.8rem; }
+    .hero { max-width: 880px; margin-bottom: 1.1rem; }
+    .hero h1 { font-size: 2.65rem; line-height: 1.24; margin: .75rem 0 .85rem; letter-spacing: -.055em; }
+    .hero h1 span { color: var(--ink); }
     .eyebrow { color: var(--blue); font-size: .78rem; font-weight: 800; letter-spacing: .08em; }
-    .lead { color: var(--sub); font-size: 1.02rem; line-height: 1.65; max-width: 720px; margin-top: -.35rem; }
+    .lead { color: var(--sub); font-size: 1.02rem; line-height: 1.65; max-width: 760px; margin-top: -.2rem; }
     .demo-note {
         display: inline-flex; align-items: center; gap: .45rem; color: var(--sub);
         background: var(--surface); border-radius: 999px; padding: .42rem .72rem;
@@ -72,17 +77,17 @@ st.markdown(
     }
     .home-summary {
         background: linear-gradient(135deg, #edf5ff 0%, #f5f8ff 55%, #f3fbf8 100%);
-        border-radius: 28px; padding: 2rem 2.1rem; margin: .8rem 0 1.7rem;
+        border-radius: 26px; padding: 1.85rem 2rem; margin: 1.5rem 0 1.7rem;
     }
     .home-summary h2 { font-size: 1.65rem !important; margin: .35rem 0 1.4rem; }
     .summary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem; }
     .summary-stat { background: rgba(255,255,255,.82); border-radius: 16px; padding: 1rem; }
     .summary-stat span { color: var(--sub); font-size: .76rem; display: block; margin-bottom: .3rem; }
     .summary-stat b { font-size: 1.18rem; letter-spacing: -.03em; }
-    .section-head { margin-top: 2.4rem; margin-bottom: .75rem; }
+    .section-head { margin-top: 2.65rem; margin-bottom: .8rem; }
     .section-head h2 { margin: .25rem 0 .2rem; }
     .section-head p { color: var(--sub); margin: 0; font-size: .9rem; }
-    .op-row { padding: 1.05rem .15rem; }
+    .op-row { padding: 1.1rem .15rem; }
     .op-tags { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .55rem; }
     .pill {
         display: inline-block; padding: .28rem .55rem; border-radius: 999px;
@@ -94,7 +99,7 @@ st.markdown(
     .op-meta { color: var(--sub); font-size: .82rem; line-height: 1.55; }
     .op-money { font-size: .88rem; font-weight: 800; color: var(--ink); margin-top: .45rem; }
     .row-divider { height: 1px; background: var(--line); }
-    .soft-card { background: var(--surface); border-radius: 22px; padding: 1.35rem; min-height: 100%; }
+    .soft-card { background: var(--surface); border-radius: 20px; padding: 1.4rem; min-height: 100%; }
     .soft-card .label { color: var(--sub); font-size: .78rem; }
     .soft-card .big { font-size: 1.45rem; font-weight: 800; letter-spacing: -.04em; margin: .35rem 0; }
     .soft-card .desc { color: var(--sub); font-size: .82rem; line-height: 1.5; }
@@ -138,15 +143,25 @@ st.markdown(
     .stButton > button[kind="primary"]:hover { background: #1b64da; color: #fff; }
     .stLinkButton > a { background: var(--surface) !important; color: var(--ink) !important; }
     [data-testid="stExpander"] { border: 0 !important; border-radius: 16px !important; background: var(--surface); }
+    [data-testid="stExpander"] summary { min-height: 48px; }
     [data-testid="stNumberInput"], [data-baseweb="select"] { border-radius: 12px; }
     [data-testid="stVegaLiteChart"] { margin-top: -.4rem; }
     @media (max-width: 760px) {
-        .block-container { padding-top: .65rem; }
+        .block-container { padding: .9rem 1rem 3.5rem; }
         h1 { font-size: 1.85rem !important; }
+        .brand { margin-bottom: .35rem; }
+        .brand-sub { display: none; }
+        .top-divider { margin: .65rem 0 1.8rem; }
+        .hero { margin-bottom: .8rem; }
+        .hero h1 { font-size: 2rem; line-height: 1.28; margin: .65rem 0 .75rem; }
+        .lead { font-size: .94rem; line-height: 1.6; }
         .summary-grid { grid-template-columns: 1fr; }
-        .home-summary { padding: 1.35rem; border-radius: 22px; }
+        .home-summary { padding: 1.3rem; border-radius: 20px; margin-top: 1.2rem; }
+        .home-summary h2 { font-size: 1.35rem !important; margin-bottom: 1rem; }
+        .section-head { margin-top: 2.1rem; }
+        .op-row { padding: .9rem 0 .65rem; }
         div[role="radiogroup"] { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
-        div[role="radiogroup"] label { white-space: nowrap; }
+        div[role="radiogroup"] label { white-space: nowrap; padding: .45rem .58rem; }
     }
     </style>
     """,
@@ -170,6 +185,7 @@ def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         "favorite_assets": set(),
         "goal_opportunities": set(),
         "selected_opportunity": str(opportunities.iloc[0]["id"]),
+        "opportunity_detail": False,
         "selected_asset": str(alternatives.iloc[0]["id"]),
         "asset_detail": False,
         "profile_grade": 1,
@@ -220,11 +236,27 @@ def category_icon(category: str) -> str:
 
 def go_to(page: str) -> None:
     st.session_state.main_nav = page
+    if page == "경제기회":
+        st.session_state.opportunity_detail = False
+    if page == "대체자산":
+        st.session_state.asset_detail = False
+
+
+def handle_navigation() -> None:
+    if st.session_state.main_nav == "경제기회":
+        st.session_state.opportunity_detail = False
+    if st.session_state.main_nav == "대체자산":
+        st.session_state.asset_detail = False
 
 
 def open_opportunity(opportunity_id: str) -> None:
     st.session_state.selected_opportunity = opportunity_id
+    st.session_state.opportunity_detail = True
     st.session_state.main_nav = "경제기회"
+
+
+def close_opportunity() -> None:
+    st.session_state.opportunity_detail = False
 
 
 def toggle_opportunity(opportunity_id: str) -> None:
@@ -365,6 +397,7 @@ def render_header() -> str:
             horizontal=True,
             label_visibility="collapsed",
             key="main_nav",
+            on_change=handle_navigation,
         )
     st.markdown('<div class="top-divider"></div>', unsafe_allow_html=True)
     return page
@@ -389,11 +422,11 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
     nearest = eligible.iloc[0] if not eligible.empty else ranked.iloc[0]
     noncompetitive = eligible[eligible["competition"] != "경쟁형"]
     max_benefit = int(noncompetitive["amount_max"].max()) if not noncompetitive.empty else 0
-    st.markdown('<div class="eyebrow">FOR YOUR CAMPUS LIFE</div>', unsafe_allow_html=True)
-    st.title("돈을 모으기 전에,\n받을 수 있는 기회부터 찾아보세요")
     st.markdown(
+        '<div class="hero"><div class="eyebrow">FOR YOUR CAMPUS LIFE</div>'
+        '<h1>돈을 모으기 전에,<br><span>받을 수 있는 기회부터 찾아보세요</span></h1>'
         '<div class="lead">장학·근로·공모전처럼 흩어진 경제기회를 내 조건에 맞춰 보고, '
-        '목표금액과 저축·관심 자산 탐색까지 한 흐름으로 연결합니다.</div>',
+        '목표금액과 저축·관심 자산 탐색까지 한 흐름으로 연결합니다.</div></div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div class="demo-note">● 현재 공고와 시세는 화면 검증용 데모 데이터입니다</div>', unsafe_allow_html=True)
@@ -454,14 +487,33 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         st.button("대체자산 둘러보기", key="home-market", width="stretch", on_click=go_to, args=("대체자산",))
 
 
+def render_opportunity_list(ranked: pd.DataFrame) -> None:
+    eligible = ranked[ranked["eligible"]]
+    st.markdown(
+        '<div class="hero"><div class="eyebrow">OPPORTUNITY FINDER</div>'
+        '<h1>내 조건에 맞는<br><span>경제기회를 모아봤어요</span></h1>'
+        '<div class="lead">장학금·근로·공모전·교내 활동을 마감일과 예상 혜택 기준으로 비교하세요.</div></div>',
+        unsafe_allow_html=True,
+    )
+    render_profile_controls(ranked)
+    render_section_head("MATCHED", f"지원 가능한 기회 {len(eligible)}개", "추천 점수와 마감일을 함께 반영했습니다.")
+    if eligible.empty:
+        st.markdown('<div class="empty-state">현재 조건에 맞는 기회가 없습니다.<br>상단에서 조건을 넓혀보세요.</div>', unsafe_allow_html=True)
+        return
+    for _, row in eligible.iterrows():
+        render_opportunity_row(row, prefix="opportunity-list")
+
+
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
     selected_id = st.session_state.selected_opportunity
     matches = ranked[ranked["id"].astype(str) == selected_id]
     row = matches.iloc[0] if not matches.empty else ranked.iloc[0]
     opportunity_id = str(row["id"])
     deadline = pd.Timestamp(row["deadline"]).strftime("%Y년 %m월 %d일")
+    weekly_hours = "해당 없음" if int(row["weekly_hours"]) == 0 else f"{int(row['weekly_hours'])}시간"
 
-    st.markdown('<div class="eyebrow">OPPORTUNITY DETAIL</div>', unsafe_allow_html=True)
+    st.button("← 경제기회 목록", key="opportunity-back", on_click=close_opportunity)
+    st.markdown('<div class="eyebrow" style="margin-top:1.35rem">OPPORTUNITY DETAIL</div>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <div class="detail-hero">
@@ -482,7 +534,7 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
               <div class="fact-row"><span>신청 대상</span><b>{escape(str(row['eligible_grades']).replace('|', '·'))}학년</b></div>
               <div class="fact-row"><span>마감일</span><b>{deadline}</b></div>
               <div class="fact-row"><span>활동 기간</span><b>{escape(str(row['duration']))}</b></div>
-              <div class="fact-row"><span>주당 활동시간</span><b>{int(row['weekly_hours'])}시간</b></div>
+              <div class="fact-row"><span>주당 활동시간</span><b>{weekly_hours}</b></div>
               <div class="fact-row"><span>선발 방식</span><b>{escape(str(row['competition']))}</b></div>
             </div>
             """,
@@ -736,7 +788,10 @@ page = render_header()
 if page == "홈":
     render_home(ranked, alternatives)
 elif page == "경제기회":
-    render_opportunity_detail(ranked)
+    if st.session_state.opportunity_detail:
+        render_opportunity_detail(ranked)
+    else:
+        render_opportunity_list(ranked)
 elif page == "목표계획":
     render_goal_plan(ranked, opportunities, savings)
 elif page == "대체자산":
