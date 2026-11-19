@@ -4,7 +4,9 @@
 
 ## 바로 실행하기
 
-**공개 데모:** [https://campus-money-guide.streamlit.app](https://campus-money-guide.streamlit.app)
+**공개 데모(발표용 깔끔한 화면):** [https://campus-money-guide.streamlit.app/~/+/?embed=true](https://campus-money-guide.streamlit.app/~/+/?embed=true)
+
+> 일반 주소로 접속하면 Streamlit Cloud의 제작자 프로필과 로고가 표시됩니다. 발표와 팀 공유에는 위 임베드 주소를 사용하세요.
 
 별도의 설치 없이 위 링크를 열면 웹브라우저에서 바로 기능을 확인할 수 있습니다.
 
