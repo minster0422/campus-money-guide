@@ -1,6 +1,7 @@
-id,name,provider,type,term_months,min_monthly,max_monthly,base_rate,max_rate,conditions,description
-sav-001,[데모] 캠퍼스 자유적금 A,제1은행,자유적금,6,10000,300000,2.6,3.4,첫 거래·자동이체,소액부터 자유롭게 납입할 수 있는 단기 목표형 예시 상품입니다.
-sav-002,[데모] 청년 목표적금 B,제2은행,정기적금,12,50000,500000,3.0,4.1,급여 또는 아르바이트비 이체,1년 목표를 가진 사용자에게 적합한 예시 상품입니다.
-sav-003,[데모] 차곡차곡 적금 C,지역은행,자유적금,24,10000,200000,2.8,3.8,모바일 가입·자동이체,장기 목표를 위해 소액을 꾸준히 모으는 예시 상품입니다.
-sav-004,[데모] 100일 도전적금 D,인터넷은행,도전적금,3,1000,100000,2.2,3.0,주 단위 납입,짧은 기간 동안 저축 습관을 만드는 예시 상품입니다.
+id,name,provider,type,min_term_months,max_term_months,rate_term_months,min_monthly,max_monthly,base_rate,max_rate,conditions,condition_level,description,rate_as_of,source_url
+sav-kakao-free,카카오뱅크 자유적금,카카오뱅크,자유적금,6,36,12,1000,3000000,3.85,4.05,전체 계약월수의 절반 이상 자동이체 후 만기 해지,1,기간과 납입액을 넓게 정할 수 있어 처음 저축을 시작하기 쉬운 상품입니다.,2026-11-19,https://www.kakaobank.com/products/savings
+sav-toss-free,토스뱅크 자유적금,토스뱅크,자유적금,3,36,12,0,3000000,2.50,3.00,계약기간 동안 예정된 자동이체를 모두 성공하고 만기 유지,2,짧은 목표부터 3년 목표까지 기간과 월 저축액을 유연하게 정할 수 있습니다.,2026-08-28,https://www.tossbank.com/articles/free-saving-account
+sav-woori-won,WON 적금,우리은행,정기·자유적금,12,12,12,0,500000,3.20,3.40,WON통장 출금 가입 및 만기 시 오픈뱅킹 타행계좌 등록,1,12개월 동안 월 최대 50만원까지 납입하는 모바일 전용 적금입니다.,2026-07-20,https://spot.wooribank.com/pot/Dream?PRD_CD=P010002353&cc=c007095%3Ac009166&withyou=PODEP0019
+sav-ibk-dday,IBK D-day적금,IBK기업은행,자유적금,1,12,12,10000,200000,3.10,4.60,가입 시 목표 달성 및 최초 고객 조건 충족,2,목표 날짜를 일 단위로 정하고 월 1만~20만원을 모으는 목표형 상품입니다.,2026-09-07,https://blog.ibk.co.kr/569707
+sav-hana-start,오늘부터 하나 적금,하나은행,자유적금,6,6,6,10000,200000,2.00,7.70,최근 6개월 무거래·자동이체·마케팅 동의 조건 충족,3,첫 거래 고객에게 큰 우대금리를 제공하지만 자격 확인이 특히 중요한 한정 상품입니다.,2026-08-26,https://banking.kebhana.com/cont/mall/mall08/mall0801/mall080102/1510520_115157.jsp
 

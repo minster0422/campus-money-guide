@@ -200,7 +200,7 @@ def opportunity_data_note() -> str:
             f"● {meta.get('school', '학교')} 공식 공고 {int(meta.get('count', 0))}건"
             f" · 마지막 수집 {fetched_at}"
         )
-    return "● 현재 공고와 시세는 화면 검증용 데모 데이터입니다"
+    return "● 교내 공고와 이색자산 시세는 화면 검증용 데모 데이터입니다"
 
 
 def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
@@ -778,20 +778,54 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
             unsafe_allow_html=True,
         )
 
-    render_section_head("SAVINGS", "내 계획에 가까운 적금", "최고금리보다 기간·월 납입 가능 여부를 먼저 봅니다.")
+    render_section_head(
+        "SAVINGS",
+        "내 계획에 가까운 실제 적금",
+        "목표 기간·월 납입 가능 여부·기본금리를 먼저 보고, 우대금리는 조건을 따로 확인합니다.",
+    )
+    st.caption("은행 공식 페이지에서 확인한 세전 금리 스냅샷입니다. 가입 전 기준일과 최신 상품설명서를 반드시 다시 확인하세요.")
     recommendations = recommend_savings(
         savings,
         remaining_months=int(st.session_state.remaining_months),
         monthly_budget=int(plan.monthly_required),
-    ).head(3)
+    ).head(4)
     for _, product in recommendations.iterrows():
-        name, rate, condition = st.columns([2.3, 1, 1.7], vertical_alignment="center")
+        term_min = int(product["min_term_months"])
+        term_max = int(product["max_term_months"])
+        term_label = f"{term_min}개월" if term_min == term_max else f"{term_min}~{term_max}개월"
+        monthly_label = (
+            f"월 {format_money(product['min_monthly'])}부터"
+            if int(product["min_monthly"]) > 0
+            else f"월 최대 {format_money(product['max_monthly'])}"
+        )
+        fit_notes = [f"목표 {int(product['matched_term_months'])}개월에 맞춤"]
+        if not bool(product["within_monthly_limit"]):
+            fit_notes.append("월 한도 초과분은 다른 수단과 분산 필요")
+        if int(product["condition_level"]) >= 3:
+            fit_notes.append("우대조건 확인 중요")
+
+        name, rate, condition, action = st.columns([2.1, 1, 1.8, 0.8], vertical_alignment="center")
         with name:
-            st.markdown(f"**{escape(clean_title(product['name']))}**  \n<span style='color:#6b7684;font-size:.8rem'>{escape(str(product['provider']))} · {int(product['term_months'])}개월 · 월 {format_money(product['min_monthly'])}부터</span>", unsafe_allow_html=True)
+            st.markdown(
+                f"**{escape(clean_title(product['name']))}**  \n"
+                f"<span style='color:#6b7684;font-size:.8rem'>{escape(str(product['provider']))} · {term_label} · {monthly_label}</span>  \n"
+                f"<span style='color:#3182f6;font-size:.76rem'>{escape(' · '.join(fit_notes))}</span>",
+                unsafe_allow_html=True,
+            )
         with rate:
-            st.markdown(f"<div style='text-align:right'><b>최고 {product['max_rate']:.1f}%</b><br><span style='color:#6b7684;font-size:.75rem'>기본 {product['base_rate']:.1f}%</span></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='text-align:right'><b>기본 {product['base_rate']:.2f}%</b><br>"
+                f"<span style='color:#6b7684;font-size:.75rem'>최고 {product['max_rate']:.2f}% · {int(product['rate_term_months'])}개월 기준</span><br>"
+                f"<span style='color:#8b95a1;font-size:.72rem'>{escape(str(product['rate_as_of']))}</span></div>",
+                unsafe_allow_html=True,
+            )
         with condition:
-            st.markdown(f"<div style='color:#6b7684;font-size:.78rem'>{escape(str(product['conditions']))}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='color:#6b7684;font-size:.78rem'><b>우대조건</b><br>{escape(str(product['conditions']))}</div>",
+                unsafe_allow_html=True,
+            )
+        with action:
+            st.link_button("공식 확인", str(product["source_url"]), width="stretch")
         st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
 
 

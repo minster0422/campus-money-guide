@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from services.recommendation import filter_opportunities, rank_opportunities
+from services.recommendation import filter_opportunities, rank_opportunities, recommend_savings
 
 
 def opportunity(region_requirement: str) -> pd.DataFrame:
@@ -101,6 +101,44 @@ class OpportunityFilterTests(unittest.TestCase):
             region="",
         )
         self.assertTrue(bool(ranked.iloc[0]["eligible"]))
+
+
+class SavingsRecommendationTests(unittest.TestCase):
+    def setUp(self):
+        self.savings = pd.DataFrame(
+            [
+                {
+                    "name": "조건이 단순한 적금",
+                    "min_term_months": 6,
+                    "max_term_months": 24,
+                    "min_monthly": 10_000,
+                    "max_monthly": 500_000,
+                    "base_rate": 3.5,
+                    "max_rate": 4.0,
+                    "condition_level": 1,
+                },
+                {
+                    "name": "최고금리만 높은 적금",
+                    "min_term_months": 6,
+                    "max_term_months": 6,
+                    "min_monthly": 10_000,
+                    "max_monthly": 200_000,
+                    "base_rate": 2.0,
+                    "max_rate": 9.0,
+                    "condition_level": 3,
+                },
+            ]
+        )
+
+    def test_max_rate_alone_does_not_win(self):
+        result = recommend_savings(self.savings, remaining_months=12, monthly_budget=100_000)
+        self.assertEqual(result.iloc[0]["name"], "조건이 단순한 적금")
+
+    def test_term_inside_supported_range_has_no_gap(self):
+        result = recommend_savings(self.savings, remaining_months=18, monthly_budget=100_000)
+        simple = result[result["name"] == "조건이 단순한 적금"].iloc[0]
+        self.assertEqual(int(simple["term_gap"]), 0)
+        self.assertEqual(int(simple["matched_term_months"]), 18)
 
 
 if __name__ == "__main__":

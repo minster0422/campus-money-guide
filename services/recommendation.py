@@ -146,18 +146,35 @@ def recommend_savings(
     remaining_months: int,
     monthly_budget: int,
 ) -> pd.DataFrame:
-    """Rank savings products by term fit and affordable monthly contribution."""
+    """Rank savings by usable term, monthly affordability, and base-rate value.
+
+    Maximum advertised rates are deliberately excluded from the fit score because
+    they can require restrictive preferential conditions. They remain available
+    in the returned frame for comparison in the UI.
+    """
     ranked = savings.copy()
-    ranked["term_gap"] = (ranked["term_months"] - remaining_months).abs()
+    below_range = (ranked["min_term_months"] - remaining_months).clip(lower=0)
+    above_range = (remaining_months - ranked["max_term_months"]).clip(lower=0)
+    ranked["term_gap"] = below_range + above_range
+    ranked["matched_term_months"] = remaining_months
+    ranked["matched_term_months"] = ranked["matched_term_months"].clip(
+        lower=ranked["min_term_months"],
+        upper=ranked["max_term_months"],
+    )
     ranked["affordable"] = ranked["min_monthly"] <= max(monthly_budget, 0)
+    ranked["within_monthly_limit"] = (
+        (ranked["max_monthly"] <= 0) | (monthly_budget <= ranked["max_monthly"])
+    )
     ranked["fit_score"] = (
-        100
-        - ranked["term_gap"].clip(upper=24) * 2
-        + ranked["affordable"].astype(int) * 15
-        + ranked["max_rate"]
-    ).clip(upper=100)
+        62
+        - ranked["term_gap"].clip(upper=24) * 4
+        + ranked["affordable"].astype(int) * 20
+        + ranked["within_monthly_limit"].astype(int) * 8
+        + ranked["base_rate"].clip(upper=5) * 2
+        - (ranked["condition_level"].clip(lower=1) - 1) * 4
+    ).clip(lower=0, upper=100)
     return ranked.sort_values(
-        ["affordable", "fit_score", "max_rate"],
-        ascending=[False, False, False],
+        ["affordable", "fit_score", "base_rate", "condition_level"],
+        ascending=[False, False, False, True],
     ).reset_index(drop=True)
 
