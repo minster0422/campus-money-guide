@@ -97,6 +97,49 @@ def rank_opportunities(
     ).reset_index(drop=True)
 
 
+def filter_opportunities(
+    opportunities: pd.DataFrame,
+    *,
+    query: str = "",
+    categories: list[str] | None = None,
+    sort_by: str = "추천순",
+) -> pd.DataFrame:
+    """Search, filter, and sort an already-ranked opportunity table."""
+    result = opportunities.copy()
+    normalized_query = query.strip().casefold()
+    if normalized_query:
+        searchable_columns = ["title", "organization", "summary", "tags", "region_requirement"]
+        searchable = pd.Series("", index=result.index, dtype="object")
+        for column in searchable_columns:
+            if column in result.columns:
+                searchable = searchable + " " + result[column].fillna("").astype(str)
+        result = result[searchable.str.casefold().str.contains(normalized_query, regex=False)]
+
+    categories = categories or []
+    if categories:
+        result = result[result["category"].isin(categories)]
+
+    if sort_by == "마감 임박순":
+        result = result.sort_values(
+            ["deadline", "eligible", "match_score"],
+            ascending=[True, False, False],
+            na_position="last",
+        )
+    elif sort_by == "혜택 큰 순":
+        result = result.sort_values(
+            ["amount_max", "eligible", "match_score", "deadline"],
+            ascending=[False, False, False, True],
+            na_position="last",
+        )
+    else:
+        result = result.sort_values(
+            ["eligible", "match_score", "deadline"],
+            ascending=[False, False, True],
+            na_position="last",
+        )
+    return result.reset_index(drop=True)
+
+
 def recommend_savings(
     savings: pd.DataFrame,
     *,

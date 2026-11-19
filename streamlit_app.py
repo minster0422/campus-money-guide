@@ -11,7 +11,7 @@ import streamlit.components.v1 as components
 
 from services.calculator import calculate_goal_plan, format_money
 from services.market import build_market_index, build_price_history
-from services.recommendation import rank_opportunities, recommend_savings
+from services.recommendation import filter_opportunities, rank_opportunities, recommend_savings
 
 
 ROOT = Path(__file__).parent
@@ -552,8 +552,6 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
 
 
 def render_opportunity_list(ranked: pd.DataFrame) -> None:
-    eligible = ranked[ranked["eligible"]]
-    condition_check = ranked[~ranked["eligible"]]
     st.markdown(
         '<div class="hero"><div class="eyebrow">OPPORTUNITY FINDER</div>'
         '<h1>내 조건에 맞는<br><span>경제기회를 모아봤어요</span></h1>'
@@ -561,6 +559,36 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
     render_profile_controls(ranked)
+    search_col, category_col, sort_col = st.columns([1.8, 1, 1])
+    with search_col:
+        query = st.text_input(
+            "경제기회 검색",
+            placeholder="공고명, 담당 부서, 지역 조건 검색",
+            key="opportunity_search",
+        )
+    with category_col:
+        selected_categories = st.multiselect(
+            "카테고리",
+            sorted(ranked["category"].dropna().unique().tolist()),
+            key="opportunity_category_filter",
+            placeholder="전체 카테고리",
+        )
+    with sort_col:
+        sort_by = st.selectbox(
+            "정렬",
+            ["추천순", "마감 임박순", "혜택 큰 순"],
+            key="opportunity_sort",
+        )
+
+    filtered = filter_opportunities(
+        ranked,
+        query=query,
+        categories=selected_categories,
+        sort_by=sort_by,
+    )
+    eligible = filtered[filtered["eligible"]]
+    condition_check = filtered[~filtered["eligible"]]
+    st.caption(f"현재 조건과 필터에서 총 {len(filtered)}개의 경제기회를 확인할 수 있습니다.")
     render_section_head("MATCHED", f"지원 가능한 기회 {len(eligible)}개", "추천 점수와 마감일을 함께 반영했습니다.")
     if eligible.empty:
         st.markdown('<div class="empty-state">현재 조건에 맞는 기회가 없습니다.<br>상단에서 조건을 넓혀보세요.</div>', unsafe_allow_html=True)
