@@ -22,6 +22,13 @@ from services.recommendation import filter_opportunities, rank_opportunities, re
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 NAV_ITEMS = ["홈", "경제기회", "목표계획", "대체자산", "관심목록"]
+NAV_LABELS = {
+    "홈": "홈",
+    "경제기회": "1. 기회찾기",
+    "목표계획": "2. 목표플랜",
+    "대체자산": "3. 자산탐색",
+    "관심목록": "관심목록",
+}
 
 st.set_page_config(
     page_title="Campus Money Guide",
@@ -91,6 +98,17 @@ st.markdown(
     .summary-stat { background: rgba(255,255,255,.82); border-radius: 16px; padding: 1rem; }
     .summary-stat span { color: var(--sub); font-size: .76rem; display: block; margin-bottom: .3rem; }
     .summary-stat b { font-size: 1.18rem; letter-spacing: -.03em; }
+    .quick-plan {
+        background: linear-gradient(135deg, #1769e0 0%, #3182f6 58%, #4b96ff 100%);
+        color: #fff; border-radius: 26px; padding: 1.8rem 2rem 1.6rem; margin: 1.35rem 0 .65rem;
+    }
+    .quick-plan .eyebrow { color: #d9eaff; }
+    .quick-plan h2 { color: #fff; font-size: 1.75rem !important; line-height: 1.35; margin: .45rem 0 1.25rem; }
+    .quick-plan-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .65rem; }
+    .quick-plan-step { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18); border-radius: 16px; padding: 1rem; }
+    .quick-plan-step span { color: #d9eaff; display: block; font-size: .74rem; margin-bottom: .35rem; }
+    .quick-plan-step b { color: #fff; display: block; font-size: 1.12rem; letter-spacing: -.03em; }
+    .quick-plan-note { color: #eaf3ff; font-size: .76rem; line-height: 1.5; margin-top: .9rem; }
     .section-head { margin-top: 2.65rem; margin-bottom: .8rem; }
     .section-head h2 { margin: .25rem 0 .2rem; }
     .section-head p { color: var(--sub); margin: 0; font-size: .9rem; }
@@ -169,6 +187,9 @@ st.markdown(
         .hero h1 { font-size: 2rem; line-height: 1.28; margin: .65rem 0 .75rem; }
         .lead { font-size: .94rem; line-height: 1.6; }
         .summary-grid { grid-template-columns: 1fr; }
+        .quick-plan { padding: 1.3rem; border-radius: 20px; }
+        .quick-plan h2 { font-size: 1.35rem !important; }
+        .quick-plan-grid { grid-template-columns: 1fr; }
         .path-grid { grid-template-columns: 1fr 1fr; }
         .home-summary { padding: 1.3rem; border-radius: 20px; margin-top: 1.2rem; }
         .home-summary h2 { font-size: 1.35rem !important; margin-bottom: 1rem; }
@@ -356,6 +377,11 @@ def add_to_goal(opportunity_id: str) -> None:
     st.session_state.main_nav = "목표계획"
 
 
+def start_quick_plan(opportunity_id: str, work_hours: int) -> None:
+    st.session_state.work_hours_per_week = max(int(work_hours), 1)
+    add_to_goal(opportunity_id)
+
+
 def open_asset(asset_id: str) -> None:
     st.session_state.selected_asset = asset_id
     st.session_state.asset_detail = True
@@ -488,6 +514,7 @@ def render_header() -> str:
             label_visibility="collapsed",
             key="main_nav",
             on_change=handle_navigation,
+            format_func=lambda item: NAV_LABELS[item],
         )
     st.markdown('<div class="top-divider"></div>', unsafe_allow_html=True)
     return page
@@ -518,37 +545,80 @@ def render_profile_controls(opportunities: pd.DataFrame) -> None:
 
 def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
     eligible = ranked[ranked["eligible"]]
-    nearest = eligible.iloc[0] if not eligible.empty else ranked.iloc[0]
     noncompetitive = eligible[eligible["competition"] != "경쟁형"]
-    max_benefit = int(noncompetitive["amount_max"].max()) if not noncompetitive.empty else 0
-    max_benefit_text = format_money(max_benefit) if max_benefit > 0 else "공고 원문 확인"
     st.markdown(
         '<div class="hero"><div class="eyebrow">FOR YOUR CAMPUS LIFE</div>'
-        '<h1>돈을 모으기 전에,<br><span>받을 수 있는 기회부터 찾아보세요</span></h1>'
-        '<div class="lead">장학·근로·공모전처럼 흩어진 경제기회를 내 조건에 맞춰 보고, '
-        '목표금액과 저축·관심 자산 탐색까지 한 흐름으로 연결합니다.</div></div>',
+        '<h1>받을 수 있는 돈을 찾고,<br><span>부족한 금액만 저축하세요</span></h1>'
+        '<div class="lead">내 조건에 맞는 장학·근로·공모전을 찾고, 목표금액까지 필요한 월 저축액을 바로 계산합니다.</div></div>',
         unsafe_allow_html=True,
     )
+    quick_candidates = noncompetitive[
+        (noncompetitive["amount_max"] > 0)
+        | noncompetitive["amount_note"].fillna("").str.contains("시급")
+    ]
+    if not quick_candidates.empty:
+        quick = quick_candidates.iloc[0].copy()
+        quick_id = str(quick["id"])
+        preview_hours = max(int(st.session_state.profile_hours), 1)
+        hourly = calculate_hourly_income(
+            quick["amount_note"],
+            weekly_hours=preview_hours,
+            months=int(st.session_state.work_months),
+        )
+        if hourly is not None:
+            quick["amount_min"] = hourly.income_min
+            quick["amount_max"] = hourly.income_max
+            income_text = f"약 {format_money(hourly.income_min)}–{format_money(hourly.income_max)}"
+            assumption = f"주 {preview_hours}시간 · {hourly.months}개월 근로 가정"
+        else:
+            income_text = opportunity_amount(quick)
+            assumption = "공고의 최소·최대 혜택 기준"
+
+        quick_plan = calculate_goal_plan(
+            pd.DataFrame([quick]),
+            target_amount=int(st.session_state.target_amount),
+            current_amount=int(st.session_state.current_amount),
+            remaining_months=int(st.session_state.remaining_months),
+        )
+        original_monthly = max(
+            (quick_plan.target_amount - quick_plan.current_amount + quick_plan.remaining_months - 1)
+            // quick_plan.remaining_months,
+            0,
+        )
+        st.markdown(
+            f"""
+            <div class="quick-plan">
+              <div class="eyebrow">한눈에 보는 맞춤 돈 마련 플랜</div>
+              <h2>{format_money(original_monthly)}씩 모으던 목표를<br>{escape(str(quick['category']))} 기회로 월 {format_money(quick_plan.monthly_required)}까지 낮출 수 있어요</h2>
+              <div class="quick-plan-grid">
+                <div class="quick-plan-step"><span>1 · 받을 기회</span><b>{escape(str(quick['category']))}</b></div>
+                <div class="quick-plan-step"><span>2 · 예상 수입</span><b>{escape(income_text)}</b></div>
+                <div class="quick-plan-step"><span>3 · 필요한 저축</span><b>월 {format_money(quick_plan.monthly_required)}</b></div>
+              </div>
+              <div class="quick-plan-note">{int(st.session_state.profile_grade)}학년 · {escape(assumption)} · 목표 {format_money(quick_plan.target_amount)} · {quick_plan.remaining_months}개월 기준의 세전 단순 추정입니다.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "이 플랜으로 자세히 계산하기",
+            key="home-quick-plan",
+            type="primary",
+            width="stretch",
+            on_click=start_quick_plan,
+            args=(quick_id, preview_hours),
+        )
+    else:
+        st.markdown(
+            '<div class="empty-state">현재 조건으로 바로 계산할 수 있는 비경쟁형 경제기회가 없습니다.<br>조건을 넓히거나 전체 공고를 확인해보세요.</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown(
         f'<div class="demo-note">{escape(opportunity_data_note())}</div>',
         unsafe_allow_html=True,
     )
     render_profile_controls(ranked)
-
-    st.markdown(
-        f"""
-        <div class="home-summary">
-          <div class="eyebrow">오늘의 경제기회 요약</div>
-          <h2>{int(st.session_state.profile_grade)}학년 조건에서 확인할 기회가 {int(eligible.shape[0])}개 있어요</h2>
-          <div class="summary-grid">
-            <div class="summary-stat"><span>가장 가까운 마감</span><b>{escape(clean_title(nearest['title']))} · {escape(deadline_label(nearest['deadline']))}</b></div>
-            <div class="summary-stat"><span>가장 큰 비경쟁형 혜택</span><b>{escape(max_benefit_text)}</b></div>
-            <div class="summary-stat"><span>관심 목록</span><b>{len(st.session_state.favorites) + len(st.session_state.favorite_assets)}개 저장됨</b></div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     render_section_head("RECOMMENDED", "지금 확인할 경제기회", "내 조건과 마감일을 함께 반영한 추천입니다.")
     for _, row in eligible.head(3).iterrows():
