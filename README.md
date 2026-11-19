@@ -8,7 +8,7 @@
 
 별도의 설치 없이 위 링크를 열면 웹브라우저에서 바로 기능을 확인할 수 있습니다.
 
-> 현재 포함된 공고·적금·이색자산 데이터는 화면과 추천 흐름을 검증하기 위한 데모 데이터입니다. 실제 서비스 단계에서는 학교 공식 공고와 출처가 확인된 상품 데이터로 교체해야 합니다.
+> 경제기회는 순천향대학교 공식 대학공지·장학공지에서 수집하며, 적금·이색자산은 화면과 추천 흐름을 검증하기 위한 데모 데이터입니다. 세부 지원 조건은 반드시 원문을 확인해야 합니다.
 
 ## 핵심 기능
 
@@ -38,6 +38,17 @@ macOS/Linux에서는 가상환경 활성화 명령으로 `source .venv/bin/activ
 python -m unittest discover -s tests
 ```
 
+## 학교 공고 갱신
+
+순천향대학교 대학공지와 장학공지의 최신 경제기회를 수집해 앱 데이터로 저장합니다.
+
+```bash
+python scripts/fetch_sch_notices.py --dry-run
+python scripts/fetch_sch_notices.py
+```
+
+발표 전날 두 번째 명령을 실행해 결과를 확인한 뒤 GitHub에 푸시하면 됩니다. 앱은 저장된 CSV를 읽으므로 시연 중 학교 홈페이지가 느려져도 목록은 정상적으로 표시됩니다.
+
 ## Streamlit Community Cloud 배포
 
 1. 이 프로젝트를 GitHub 공동 저장소에 푸시합니다.
@@ -57,7 +68,8 @@ python -m unittest discover -s tests
 
 ## 데이터 교체
 
-- `data/opportunities.csv`: 교내 경제기회
+- `data/opportunities.csv`: 순천향대학교 공식 게시판에서 수집한 교내 경제기회
+- `data/opportunities_meta.json`: 수집 시각과 원본 게시판 정보
 - `data/savings.csv`: 적금 상품
 - `data/alternative_assets.csv`: 이색 자산 시세
 

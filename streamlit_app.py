@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from html import escape
 from pathlib import Path
@@ -174,8 +175,30 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     opportunities = pd.read_csv(DATA_DIR / "opportunities.csv")
     savings = pd.read_csv(DATA_DIR / "savings.csv")
     alternatives = pd.read_csv(DATA_DIR / "alternative_assets.csv")
-    opportunities["deadline"] = pd.to_datetime(opportunities["deadline"])
+    opportunities["deadline"] = pd.to_datetime(opportunities["deadline"], errors="coerce")
     return opportunities, savings, alternatives
+
+
+@st.cache_data
+def load_opportunity_meta() -> dict[str, object]:
+    path = DATA_DIR / "opportunities_meta.json"
+    if not path.exists():
+        return {"source_type": "demo", "count": 0}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"source_type": "demo", "count": 0}
+
+
+def opportunity_data_note() -> str:
+    meta = load_opportunity_meta()
+    if meta.get("source_type") == "official_school_notices":
+        fetched_at = str(meta.get("fetched_at", "")).replace("T", " ")[:16]
+        return (
+            f"● {meta.get('school', '학교')} 공식 공고 {int(meta.get('count', 0))}건"
+            f" · 마지막 수집 {fetched_at}"
+        )
+    return "● 현재 공고와 시세는 화면 검증용 데모 데이터입니다"
 
 
 def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
@@ -207,14 +230,21 @@ def clean_title(value: object) -> str:
 
 
 def opportunity_amount(row: pd.Series) -> str:
-    minimum = int(row["amount_min"])
-    maximum = int(row["amount_max"])
+    amount_note = row.get("amount_note", "")
+    if isinstance(amount_note, str) and amount_note.strip():
+        return amount_note.strip()
+    minimum = int(row.get("amount_min", 0) or 0)
+    maximum = int(row.get("amount_max", 0) or 0)
+    if minimum <= 0 and maximum <= 0:
+        return "원문에서 확인"
     if minimum == maximum:
         return format_money(minimum)
     return f"{format_money(minimum)} ~ {format_money(maximum)}"
 
 
 def deadline_label(value: object) -> str:
+    if pd.isna(value):
+        return "마감일 원문 확인"
     deadline = pd.Timestamp(value).date()
     days = (deadline - date.today()).days
     if days == 0:
@@ -422,6 +452,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
     nearest = eligible.iloc[0] if not eligible.empty else ranked.iloc[0]
     noncompetitive = eligible[eligible["competition"] != "경쟁형"]
     max_benefit = int(noncompetitive["amount_max"].max()) if not noncompetitive.empty else 0
+    max_benefit_text = format_money(max_benefit) if max_benefit > 0 else "공고 원문 확인"
     st.markdown(
         '<div class="hero"><div class="eyebrow">FOR YOUR CAMPUS LIFE</div>'
         '<h1>돈을 모으기 전에,<br><span>받을 수 있는 기회부터 찾아보세요</span></h1>'
@@ -429,7 +460,10 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         '목표금액과 저축·관심 자산 탐색까지 한 흐름으로 연결합니다.</div></div>',
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="demo-note">● 현재 공고와 시세는 화면 검증용 데모 데이터입니다</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="demo-note">{escape(opportunity_data_note())}</div>',
+        unsafe_allow_html=True,
+    )
     render_profile_controls(ranked)
 
     st.markdown(
@@ -439,7 +473,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
           <h2>{int(st.session_state.profile_grade)}학년 조건에서 확인할 기회가 {int(eligible.shape[0])}개 있어요</h2>
           <div class="summary-grid">
             <div class="summary-stat"><span>가장 가까운 마감</span><b>{escape(clean_title(nearest['title']))} · {escape(deadline_label(nearest['deadline']))}</b></div>
-            <div class="summary-stat"><span>가장 큰 비경쟁형 혜택</span><b>{format_money(max_benefit)}</b></div>
+            <div class="summary-stat"><span>가장 큰 비경쟁형 혜택</span><b>{escape(max_benefit_text)}</b></div>
             <div class="summary-stat"><span>관심 목록</span><b>{len(st.session_state.favorites) + len(st.session_state.favorite_assets)}개 저장됨</b></div>
           </div>
         </div>
@@ -509,7 +543,11 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
     matches = ranked[ranked["id"].astype(str) == selected_id]
     row = matches.iloc[0] if not matches.empty else ranked.iloc[0]
     opportunity_id = str(row["id"])
-    deadline = pd.Timestamp(row["deadline"]).strftime("%Y년 %m월 %d일")
+    deadline = (
+        "공고 원문 확인"
+        if pd.isna(row["deadline"])
+        else pd.Timestamp(row["deadline"]).strftime("%Y년 %m월 %d일")
+    )
     weekly_hours = "해당 없음" if int(row["weekly_hours"]) == 0 else f"{int(row['weekly_hours'])}시간"
 
     st.button("← 경제기회 목록", key="opportunity-back", on_click=close_opportunity)
@@ -809,7 +847,13 @@ with st.expander("프로젝트 소개와 데이터 안내"):
     )
     st.caption("현재 MVP에서는 회원가입, 계좌 연동, 자동 매수, 투자수익 예측을 제공하지 않습니다.")
 
+footer_meta = load_opportunity_meta()
+footer_source = (
+    f"{footer_meta.get('school', '학교')} 공식 공고 기반"
+    if footer_meta.get("source_type") == "official_school_notices"
+    else f"데모 기준일 {date.today().isoformat()}"
+)
 st.markdown(
-    f'<div class="footer-note">Campus Money Guide · 데모 기준일 {date.today().isoformat()} · 원문과 최신 조건을 반드시 확인하세요.</div>',
+    f'<div class="footer-note">Campus Money Guide · {escape(footer_source)} · 원문과 최신 조건을 반드시 확인하세요.</div>',
     unsafe_allow_html=True,
 )

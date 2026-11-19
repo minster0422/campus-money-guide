@@ -1,0 +1,16 @@
+{
+  "source_type": "official_school_notices",
+  "school": "순천향대학교",
+  "fetched_at": "2026-11-19T10:07+09:00",
+  "count": 8,
+  "sources": [
+    {
+      "name": "장학공지",
+      "url": "https://home.sch.ac.kr/sch/06/010300.jsp"
+    },
+    {
+      "name": "대학공지",
+      "url": "https://home.sch.ac.kr/sch/06/010100.jsp"
+    }
+  ]
+}
