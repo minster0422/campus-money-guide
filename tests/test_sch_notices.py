@@ -9,6 +9,7 @@ from services.sch_notices import (
     extract_amount_info,
     extract_deadline,
     extract_eligible_grades,
+    extract_region_requirement,
     is_relevant_title,
     parse_board_list,
 )
@@ -67,6 +68,27 @@ class SchNoticeTests(unittest.TestCase):
 
     def test_extracts_grade_range(self):
         self.assertEqual(extract_eligible_grades("2027-1학기 기준 2~3학년 재학생"), "2|3")
+
+    def test_extracts_city_residency_requirement(self):
+        region = extract_region_requirement(
+            "2026년도 통영시 저소득 대학생 장학금 지원 대상자 선발 안내",
+            "주민등록상 6년 이상 통영시에 주소를 두고 통영시 관내 학교를 다닌 자",
+        )
+        self.assertEqual(region, "통영시")
+
+    def test_school_notice_without_region_is_unrestricted(self):
+        region = extract_region_requirement(
+            "동계방학 교내근로 장학생 모집",
+            "순천향대학교 재학생 중 국가근로 신청자를 모집합니다.",
+        )
+        self.assertEqual(region, "제한 없음")
+
+    def test_academic_year_is_not_treated_as_a_region(self):
+        region = extract_region_requirement(
+            "2027학년도 SRC 재학생 멘토 모집 안내",
+            "2027학년도 1, 2학기 동안 활동할 재학생을 모집합니다.",
+        )
+        self.assertEqual(region, "제한 없음")
 
     def test_parses_official_board_row(self):
         html = """

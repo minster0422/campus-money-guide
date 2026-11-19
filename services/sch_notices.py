@@ -42,6 +42,7 @@ OUTPUT_COLUMNS = [
     "organization",
     "eligible_grades",
     "residence",
+    "region_requirement",
     "weekly_hours",
     "benefit_type",
     "amount_min",
@@ -191,6 +192,43 @@ def extract_eligible_grades(body: str) -> str:
     return "1|2|3|4"
 
 
+REGION_PATTERN = re.compile(
+    r"(?<![가-힣])((?:서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|"
+    r"대전광역시|울산광역시|세종특별자치시|경기도|강원특별자치도|충청북도|"
+    r"충청남도|전북특별자치도|전라남도|경상북도|경상남도|제주특별자치도|"
+    r"[가-힣]{2,8}(?:시|군|구)))(?![가-힣])"
+)
+REGION_RESIDENT_PATTERN = re.compile(
+    r"(?<![가-힣])([가-힣]{2,8}(?:시|군|구))(?:민|민인|출신|거주자)"
+)
+
+
+def extract_region_requirement(title: str, body: str) -> str:
+    """Extract a clearly stated local-government residency or origin restriction."""
+    normalized_title = _clean_text(title.replace("\xa0", " "))
+    normalized_body = _clean_text(body.replace("\xa0", " "))
+    context_keywords = ("거주", "주소", "출신", "관내", "구민", "시민", "군민", "도민")
+
+    candidates: list[str] = []
+    candidates.extend(REGION_RESIDENT_PATTERN.findall(normalized_title))
+    candidates.extend(REGION_PATTERN.findall(normalized_title))
+
+    if any(keyword in normalized_body for keyword in context_keywords):
+        candidates.extend(REGION_RESIDENT_PATTERN.findall(normalized_body))
+        for match in REGION_PATTERN.finditer(normalized_body):
+            start, end = match.span()
+            context = normalized_body[max(0, start - 45) : min(len(normalized_body), end + 45)]
+            if any(keyword in context for keyword in context_keywords):
+                candidates.append(match.group(1))
+
+    excluded = {"대한민국", "순천향대학교"}
+    unique: list[str] = []
+    for candidate in candidates:
+        if candidate not in excluded and candidate not in unique:
+            unique.append(candidate)
+    return "|".join(unique[:3]) if unique else "제한 없음"
+
+
 def _year_for_month(month: int, published: date) -> int:
     # December notices often recruit for the following January.
     return published.year + 1 if month + 2 < published.month else published.year
@@ -307,6 +345,7 @@ def normalize_notice(record: dict[str, object], body: str) -> dict[str, object]:
     category, benefit_type, competition, tags = classify_title(title)
     deadline = extract_deadline(title, body, published)
     amount_min, amount_max, amount_note = extract_amount_info(category, body)
+    region_requirement = extract_region_requirement(title, body)
     summary = (
         f"순천향대학교 {record['board_name']}에서 수집한 공식 공고입니다. "
         "금액과 세부 지원 조건은 원문에서 확인하세요."
@@ -318,6 +357,7 @@ def normalize_notice(record: dict[str, object], body: str) -> dict[str, object]:
         "organization": record["organization"],
         "eligible_grades": extract_eligible_grades(body),
         "residence": "전체",
+        "region_requirement": region_requirement,
         "weekly_hours": 0,
         "benefit_type": benefit_type,
         "amount_min": amount_min,

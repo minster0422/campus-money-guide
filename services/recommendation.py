@@ -18,6 +18,7 @@ def rank_opportunities(
     grade: int,
     residence: str,
     available_hours: int,
+    region: str = "",
     interests: list[str] | None = None,
 ) -> pd.DataFrame:
     """Return opportunities ranked by a transparent, rule-based match score."""
@@ -27,10 +28,20 @@ def rank_opportunities(
     for _, row in opportunities.iterrows():
         grades = _split_values(row.get("eligible_grades"))
         residences = _split_values(row.get("residence"))
+        required_regions = _split_values(row.get("region_requirement"))
         tags = _split_values(row.get("tags"))
 
         grade_ok = ALL_VALUE in grades or str(grade) in grades
         residence_ok = ALL_VALUE in residences or residence in residences
+        region_restricted = bool(required_regions) and "제한 없음" not in required_regions
+        normalized_region = region.strip()
+        region_ok = not region_restricted or (
+            bool(normalized_region)
+            and any(
+                required in normalized_region or normalized_region in required
+                for required in required_regions
+            )
+        )
         required_hours = int(row.get("weekly_hours", 0) or 0)
         hours_ok = required_hours <= available_hours or required_hours == 0
 
@@ -43,6 +54,15 @@ def rank_opportunities(
         else:
             score -= 35
             reasons.append("학년 조건 확인 필요")
+
+        if region_restricted:
+            region_label = "·".join(sorted(required_regions))
+            if region_ok:
+                score += 15
+                reasons.append(f"{region_label} 지역 조건 일치")
+            else:
+                score -= 40
+                reasons.append(f"{region_label} 거주·연고 조건 확인 필요")
 
         if residence_ok:
             score += 15
@@ -67,7 +87,7 @@ def rank_opportunities(
         record = row.to_dict()
         record["match_score"] = max(0, min(100, score))
         record["match_reason"] = " · ".join(reasons[:3]) or "기본 조건으로 추천"
-        record["eligible"] = grade_ok and residence_ok and hours_ok
+        record["eligible"] = grade_ok and residence_ok and hours_ok and region_ok
         ranked.append(record)
 
     result = pd.DataFrame(ranked)

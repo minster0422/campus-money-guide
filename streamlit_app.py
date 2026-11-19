@@ -97,6 +97,7 @@ st.markdown(
     }
     .pill.blue { background: var(--blue-soft); color: var(--blue); }
     .pill.green { background: #e8f8f3; color: #008f69; }
+    .pill.amber { background: #fff3df; color: #b85c00; }
     .op-title { font-size: 1.06rem; font-weight: 800; letter-spacing: -.025em; margin-bottom: .35rem; }
     .op-meta { color: var(--sub); font-size: .82rem; line-height: 1.55; }
     .op-money { font-size: .88rem; font-weight: 800; color: var(--ink); margin-top: .45rem; }
@@ -214,6 +215,7 @@ def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         "asset_detail": False,
         "profile_grade": 1,
         "profile_residence": "전체",
+        "profile_region": "",
         "profile_hours": 6,
         "profile_interests": [],
         "target_amount": 1_500_000,
@@ -253,6 +255,13 @@ def deadline_label(value: object) -> str:
     if days > 0:
         return f"D-{days}"
     return "마감"
+
+
+def region_requirement_label(row: pd.Series) -> str:
+    value = row.get("region_requirement", "제한 없음")
+    if pd.isna(value) or not str(value).strip():
+        return "제한 없음"
+    return str(value).replace("|", "·")
 
 
 def category_icon(category: str) -> str:
@@ -376,6 +385,12 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
     title = escape(clean_title(row["title"]))
     amount = escape(opportunity_amount(row))
     reason = escape(str(row.get("match_reason", row["summary"])))
+    region_label = region_requirement_label(row)
+    region_pill = (
+        f'<span class="pill amber">{escape(region_label)} 지역 조건</span>'
+        if region_label != "제한 없음"
+        else ""
+    )
     left, right = st.columns([4.2, 1.15], vertical_alignment="center")
     with left:
         st.markdown(
@@ -385,6 +400,7 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
                 <span class="pill blue">{escape(str(row['category']))}</span>
                 <span class="pill">{escape(deadline_label(row['deadline']))}</span>
                 <span class="pill green">{int(row.get('match_score', 0))}% 일치</span>
+                {region_pill}
               </div>
               <div class="op-title">{title}</div>
               <div class="op-meta">{escape(str(row['organization']))} · {reason}</div>
@@ -440,16 +456,25 @@ def render_header() -> str:
 
 def render_profile_controls(opportunities: pd.DataFrame) -> None:
     with st.expander("내 조건 수정 · 추천 기준 보기"):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.selectbox("학년", [1, 2, 3, 4], key="profile_grade")
         with c2:
             st.selectbox("거주 형태", ["전체", "기숙사", "자취"], key="profile_residence")
         with c3:
             st.slider("주당 활동 가능 시간", 0, 20, key="profile_hours")
+        with c4:
+            st.text_input(
+                "거주·연고 지역",
+                key="profile_region",
+                placeholder="예: 통영시, 아산시",
+            )
         categories = sorted(opportunities["category"].unique().tolist())
         st.multiselect("관심 있는 기회", categories, key="profile_interests")
-        st.caption("이 조건은 추천 순서에만 사용되며 별도로 저장하지 않습니다.")
+        st.caption(
+            "지역을 비워두면 특정 시·군·구 거주 또는 출신 조건이 있는 공고는 추천 가능 목록에서 제외됩니다. "
+            "입력한 조건은 별도로 저장하지 않습니다."
+        )
 
 
 def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
@@ -528,6 +553,7 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
 
 def render_opportunity_list(ranked: pd.DataFrame) -> None:
     eligible = ranked[ranked["eligible"]]
+    condition_check = ranked[~ranked["eligible"]]
     st.markdown(
         '<div class="hero"><div class="eyebrow">OPPORTUNITY FINDER</div>'
         '<h1>내 조건에 맞는<br><span>경제기회를 모아봤어요</span></h1>'
@@ -538,9 +564,17 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
     render_section_head("MATCHED", f"지원 가능한 기회 {len(eligible)}개", "추천 점수와 마감일을 함께 반영했습니다.")
     if eligible.empty:
         st.markdown('<div class="empty-state">현재 조건에 맞는 기회가 없습니다.<br>상단에서 조건을 넓혀보세요.</div>', unsafe_allow_html=True)
-        return
-    for _, row in eligible.iterrows():
-        render_opportunity_row(row, prefix="opportunity-list")
+    else:
+        for _, row in eligible.iterrows():
+            render_opportunity_row(row, prefix="opportunity-list")
+    if not condition_check.empty:
+        render_section_head(
+            "CHECK CONDITIONS",
+            f"추가 조건을 확인할 기회 {len(condition_check)}개",
+            "학년·지역·활동시간 조건이 맞지 않거나 확인이 필요한 공고입니다.",
+        )
+        for _, row in condition_check.iterrows():
+            render_opportunity_row(row, prefix="condition-check")
 
 
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
@@ -586,6 +620,7 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
         else pd.Timestamp(row["deadline"]).strftime("%Y년 %m월 %d일")
     )
     weekly_hours = "해당 없음" if int(row["weekly_hours"]) == 0 else f"{int(row['weekly_hours'])}시간"
+    region_requirement = region_requirement_label(row)
 
     st.button("← 경제기회 목록", key="opportunity-back", on_click=close_opportunity)
     st.markdown('<div class="eyebrow" style="margin-top:1.35rem">OPPORTUNITY DETAIL</div>', unsafe_allow_html=True)
@@ -607,6 +642,7 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
             f"""
             <div class="fact-list">
               <div class="fact-row"><span>신청 대상</span><b>{escape(str(row['eligible_grades']).replace('|', '·'))}학년</b></div>
+              <div class="fact-row"><span>지역 조건</span><b>{escape(region_requirement)}</b></div>
               <div class="fact-row"><span>마감일</span><b>{deadline}</b></div>
               <div class="fact-row"><span>활동 기간</span><b>{escape(str(row['duration']))}</b></div>
               <div class="fact-row"><span>주당 활동시간</span><b>{weekly_hours}</b></div>
@@ -856,6 +892,7 @@ ranked = rank_opportunities(
     grade=int(st.session_state.profile_grade),
     residence=str(st.session_state.profile_residence),
     available_hours=int(st.session_state.profile_hours),
+    region=str(st.session_state.profile_region),
     interests=list(st.session_state.profile_interests),
 )
 
