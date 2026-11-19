@@ -285,6 +285,9 @@ def open_opportunity(opportunity_id: str) -> None:
     st.session_state.opportunity_detail = True
     st.session_state.main_nav = "경제기회"
     st.session_state.opportunity_scroll_top = True
+    st.session_state.opportunity_scroll_nonce = (
+        int(st.session_state.get("opportunity_scroll_nonce", 0)) + 1
+    )
 
 
 def close_opportunity() -> None:
@@ -543,8 +546,8 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
     st.markdown('<div id="opportunity-detail-top"></div>', unsafe_allow_html=True)
     if st.session_state.pop("opportunity_scroll_top", False):
-        components.html(
-            """
+        scroll_nonce = int(st.session_state.get("opportunity_scroll_nonce", 0))
+        scroll_html = f"<!-- scroll-request:{scroll_nonce} -->" + """
             <script>
               const scrollTop = () => {
                 const doc = window.parent.document;
@@ -567,7 +570,9 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
                 window.parent.setTimeout(scrollTop, delay)
               );
             </script>
-            """,
+        """
+        components.html(
+            scroll_html,
             height=0,
         )
 
