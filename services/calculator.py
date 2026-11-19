@@ -19,6 +19,17 @@ class GoalPlan:
     monthly_required: int
 
 
+@dataclass(frozen=True)
+class SavingsProjection:
+    monthly_contribution: int
+    months: int
+    principal: int
+    base_interest: int
+    max_interest: int
+    base_maturity: int
+    max_maturity: int
+
+
 def calculate_goal_plan(
     selected: pd.DataFrame,
     *,
@@ -53,6 +64,41 @@ def calculate_goal_plan(
         base_gap=base_gap,
         optimistic_gap=optimistic_gap,
         monthly_required=monthly_required,
+    )
+
+
+def calculate_savings_projection(
+    *,
+    monthly_contribution: int,
+    months: int,
+    base_rate: float,
+    max_rate: float,
+) -> SavingsProjection:
+    """Estimate simple-interest installment savings before tax.
+
+    Each monthly installment earns interest for a different number of months.
+    For n installments, the total interest-bearing months are n + ... + 1.
+    Product-specific payment dates, compounding, and preferential eligibility can
+    change the actual amount, so this is intended as a comparison estimate only.
+    """
+    monthly_contribution = max(int(monthly_contribution), 0)
+    months = max(int(months), 1)
+    principal = monthly_contribution * months
+    interest_months = months * (months + 1) / 2
+
+    def estimate(rate: float) -> int:
+        return round(monthly_contribution * (max(float(rate), 0) / 100) * interest_months / 12)
+
+    base_interest = estimate(base_rate)
+    max_interest = max(estimate(max_rate), base_interest)
+    return SavingsProjection(
+        monthly_contribution=monthly_contribution,
+        months=months,
+        principal=principal,
+        base_interest=base_interest,
+        max_interest=max_interest,
+        base_maturity=principal + base_interest,
+        max_maturity=principal + max_interest,
     )
 
 

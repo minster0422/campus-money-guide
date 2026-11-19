@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from services.calculator import calculate_goal_plan, format_money
+from services.calculator import calculate_goal_plan, calculate_savings_projection, format_money
 from services.market import build_reference_history, market_snapshot_summary
 from services.recommendation import filter_opportunities, rank_opportunities, recommend_savings
 
@@ -807,7 +807,10 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
         "내 계획에 가까운 실제 적금",
         "목표 기간·월 납입 가능 여부·기본금리를 먼저 보고, 우대금리는 조건을 따로 확인합니다.",
     )
-    st.caption("은행 공식 페이지에서 확인한 세전 금리 스냅샷입니다. 가입 전 기준일과 최신 상품설명서를 반드시 다시 확인하세요.")
+    st.caption(
+        "은행 공식 페이지에서 확인한 세전 금리 스냅샷입니다. 예상이자는 매월 같은 금액을 납입하는 단순 비교값이며, "
+        "가입 전 기준일과 최신 상품설명서를 반드시 다시 확인하세요."
+    )
     recommendations = recommend_savings(
         savings,
         remaining_months=int(st.session_state.remaining_months),
@@ -816,24 +819,48 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
     for _, product in recommendations.iterrows():
         term_min = int(product["min_term_months"])
         term_max = int(product["max_term_months"])
-        term_label = f"{term_min}개월" if term_min == term_max else f"{term_min}~{term_max}개월"
+        term_label = f"{term_min}개월" if term_min == term_max else f"{term_min}–{term_max}개월"
         monthly_label = (
             f"월 {format_money(product['min_monthly'])}부터"
             if int(product["min_monthly"]) > 0
             else f"월 최대 {format_money(product['max_monthly'])}"
         )
         fit_notes = [f"목표 {int(product['matched_term_months'])}개월에 맞춤"]
+        if not bool(product["affordable"]):
+            fit_notes.append("상품 최소 납입액 기준 확인")
         if not bool(product["within_monthly_limit"]):
             fit_notes.append("월 한도 초과분은 다른 수단과 분산 필요")
         if int(product["condition_level"]) >= 3:
             fit_notes.append("우대조건 확인 중요")
+
+        required_monthly = int(plan.monthly_required)
+        projection_monthly = required_monthly
+        if required_monthly > 0:
+            projection_monthly = max(projection_monthly, int(product["min_monthly"]))
+            if int(product["max_monthly"]) > 0:
+                projection_monthly = min(projection_monthly, int(product["max_monthly"]))
+        projection = calculate_savings_projection(
+            monthly_contribution=projection_monthly,
+            months=int(product["rate_term_months"]),
+            base_rate=float(product["base_rate"]),
+            max_rate=float(product["max_rate"]),
+        )
+        if projection.monthly_contribution > 0:
+            projection_text = (
+                f"월 {format_money(projection.monthly_contribution)} × {projection.months}개월 → "
+                f"원금 {format_money(projection.principal)} · 세전 이자 약 "
+                f"{format_money(projection.base_interest)}–{format_money(projection.max_interest)}"
+            )
+        else:
+            projection_text = "현재 목표는 이미 충족되어 추가 적립이 필요하지 않습니다."
 
         name, rate, condition, action = st.columns([2.1, 1, 1.8, 0.8], vertical_alignment="center")
         with name:
             st.markdown(
                 f"**{escape(clean_title(product['name']))}**  \n"
                 f"<span style='color:#6b7684;font-size:.8rem'>{escape(str(product['provider']))} · {term_label} · {monthly_label}</span>  \n"
-                f"<span style='color:#3182f6;font-size:.76rem'>{escape(' · '.join(fit_notes))}</span>",
+                f"<span style='color:#3182f6;font-size:.76rem'>{escape(' · '.join(fit_notes))}</span>  \n"
+                f"<span style='color:#4e5968;font-size:.76rem'>{escape(projection_text)}</span>",
                 unsafe_allow_html=True,
             )
         with rate:

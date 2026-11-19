@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from services.calculator import calculate_goal_plan
+from services.calculator import calculate_goal_plan, calculate_savings_projection
 
 
 class GoalCalculatorTest(unittest.TestCase):
@@ -33,6 +33,30 @@ class GoalCalculatorTest(unittest.TestCase):
         )
         self.assertEqual(plan.base_gap, 1_200_000)
         self.assertEqual(plan.monthly_required, 100_000)
+
+
+class SavingsProjectionTest(unittest.TestCase):
+    def test_matches_twelve_month_installment_example(self):
+        projection = calculate_savings_projection(
+            monthly_contribution=200_000,
+            months=12,
+            base_rate=2.85,
+            max_rate=4.35,
+        )
+        self.assertEqual(projection.principal, 2_400_000)
+        self.assertEqual(projection.base_interest, 37_050)
+        self.assertEqual(projection.max_interest, 56_550)
+        self.assertEqual(projection.max_maturity, 2_456_550)
+
+    def test_zero_contribution_stays_zero(self):
+        projection = calculate_savings_projection(
+            monthly_contribution=0,
+            months=6,
+            base_rate=3.0,
+            max_rate=4.0,
+        )
+        self.assertEqual(projection.principal, 0)
+        self.assertEqual(projection.max_interest, 0)
 
 
 if __name__ == "__main__":
