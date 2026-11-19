@@ -541,22 +541,31 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
 
 
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
+    st.markdown('<div id="opportunity-detail-top"></div>', unsafe_allow_html=True)
     if st.session_state.pop("opportunity_scroll_top", False):
         components.html(
             """
             <script>
               const scrollTop = () => {
                 const doc = window.parent.document;
-                const container =
-                  doc.querySelector('[data-testid="stAppViewContainer"]') ||
-                  doc.querySelector('section.main');
-                if (container) container.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                const detailTop = doc.querySelector('#opportunity-detail-top');
+                const main = doc.querySelector('[data-testid="stMain"]');
+                const appView = doc.querySelector('[data-testid="stAppViewContainer"]');
+                const block = doc.querySelector('[data-testid="stMainBlockContainer"]');
+                [main, appView, doc.scrollingElement, doc.documentElement, doc.body]
+                  .filter(Boolean)
+                  .forEach((element) => {
+                    element.scrollTop = 0;
+                    if (element.scrollTo) {
+                      element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                    }
+                  });
+                (block || detailTop)?.scrollIntoView({ block: 'start', behavior: 'auto' });
                 window.parent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
               };
-              window.parent.requestAnimationFrame(() =>
-                window.parent.requestAnimationFrame(scrollTop)
+              [0, 80, 200, 450].forEach((delay) =>
+                window.parent.setTimeout(scrollTop, delay)
               );
-              window.parent.setTimeout(scrollTop, 100);
             </script>
             """,
             height=0,
