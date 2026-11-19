@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from services.calculator import calculate_goal_plan, calculate_savings_projection
+from services.calculator import calculate_goal_plan, calculate_hourly_income, calculate_savings_projection
 
 
 class GoalCalculatorTest(unittest.TestCase):
@@ -57,6 +57,26 @@ class SavingsProjectionTest(unittest.TestCase):
         )
         self.assertEqual(projection.principal, 0)
         self.assertEqual(projection.max_interest, 0)
+
+
+class HourlyIncomeProjectionTest(unittest.TestCase):
+    def test_estimates_hourly_range_with_explicit_assumptions(self):
+        projection = calculate_hourly_income(
+            "시급 10,320원 ~ 12,790원",
+            weekly_hours=6,
+            months=2,
+        )
+        self.assertIsNotNone(projection)
+        assert projection is not None
+        self.assertEqual(projection.hourly_min, 10_320)
+        self.assertEqual(projection.hourly_max, 12_790)
+        self.assertEqual(projection.income_min, 538_085)
+        self.assertEqual(projection.income_max, 666_871)
+
+    def test_returns_none_for_non_hourly_note(self):
+        self.assertIsNone(
+            calculate_hourly_income("1,000,000원", weekly_hours=6, months=2)
+        )
 
 
 if __name__ == "__main__":

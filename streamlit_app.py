@@ -9,7 +9,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from services.calculator import calculate_goal_plan, calculate_savings_projection, format_money
+from services.calculator import (
+    calculate_goal_plan,
+    calculate_hourly_income,
+    calculate_savings_projection,
+    format_money,
+)
 from services.market import build_reference_history, market_snapshot_summary
 from services.recommendation import filter_opportunities, rank_opportunities, recommend_savings
 
@@ -125,6 +130,11 @@ st.markdown(
     .impact-card { background: #eef8f5; border-radius: 18px; padding: 1.05rem; margin-top: .8rem; }
     .impact-card b { font-size: 1.05rem; }
     .impact-card p { color: var(--sub); font-size: .82rem; margin: .35rem 0 0; }
+    .path-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .65rem; margin-top: 1rem; }
+    .path-step { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 1rem; }
+    .path-step span { color: var(--sub); display: block; font-size: .74rem; margin-bottom: .35rem; }
+    .path-step b { display: block; font-size: 1rem; letter-spacing: -.025em; }
+    .path-step small { color: var(--sub); display: block; font-size: .7rem; line-height: 1.45; margin-top: .35rem; }
     .market-number { font-size: 2rem; font-weight: 800; letter-spacing: -.045em; }
     .positive { color: var(--green) !important; font-weight: 800; }
     .negative { color: var(--red) !important; font-weight: 800; }
@@ -159,6 +169,7 @@ st.markdown(
         .hero h1 { font-size: 2rem; line-height: 1.28; margin: .65rem 0 .75rem; }
         .lead { font-size: .94rem; line-height: 1.6; }
         .summary-grid { grid-template-columns: 1fr; }
+        .path-grid { grid-template-columns: 1fr 1fr; }
         .home-summary { padding: 1.3rem; border-radius: 20px; margin-top: 1.2rem; }
         .home-summary h2 { font-size: 1.35rem !important; margin-bottom: 1rem; }
         .section-head { margin-top: 2.1rem; }
@@ -221,6 +232,8 @@ def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         "target_amount": 1_500_000,
         "current_amount": 300_000,
         "remaining_months": 6,
+        "work_hours_per_week": 6,
+        "work_months": 2,
         "asset_period": "6개월",
     }
     for key, value in defaults.items():
@@ -339,6 +352,7 @@ def toggle_opportunity(opportunity_id: str) -> None:
 def add_to_goal(opportunity_id: str) -> None:
     st.session_state.goal_opportunities.add(opportunity_id)
     st.session_state[f"goal-check-{opportunity_id}"] = True
+    st.session_state.goal_added_id = opportunity_id
     st.session_state.main_nav = "목표계획"
 
 
@@ -708,14 +722,24 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
             f'<div class="reason-box"><b>나에게 추천된 이유</b><p>{escape(str(row["match_reason"]))}</p></div>',
             unsafe_allow_html=True,
         )
-        st.button(
-            "목표계획에 담기",
-            key=f"detail-goal-{opportunity_id}",
-            type="primary",
-            width="stretch",
-            on_click=add_to_goal,
-            args=(opportunity_id,),
-        )
+        if bool(row["eligible"]):
+            already_added = opportunity_id in st.session_state.goal_opportunities
+            st.button(
+                "목표계획에서 확인" if already_added else "목표계획에 담기",
+                key=f"detail-goal-{opportunity_id}",
+                type="primary",
+                width="stretch",
+                on_click=add_to_goal,
+                args=(opportunity_id,),
+            )
+        else:
+            st.button(
+                "현재 조건으로는 담을 수 없어요",
+                key=f"detail-goal-disabled-{opportunity_id}",
+                width="stretch",
+                disabled=True,
+            )
+            st.caption("학년·지역·거주·활동시간 조건을 먼저 확인해 주세요.")
         favorite = opportunity_id in st.session_state.favorites
         st.button(
             "관심 목록에서 제거" if favorite else "관심 기회로 저장",
@@ -740,6 +764,12 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
     st.title("기회를 목표금액으로 연결해보세요")
     st.markdown('<div class="lead">목표는 선택사항입니다. 경쟁형 상금은 확정 수입과 분리해서 계산합니다.</div>', unsafe_allow_html=True)
 
+    added_id = st.session_state.pop("goal_added_id", None)
+    if added_id:
+        added = ranked[ranked["id"].astype(str) == str(added_id)]
+        if not added.empty:
+            st.success(f"‘{clean_title(added.iloc[0]['title'])}’을 목표계획에 담았습니다.")
+
     with st.expander("목표 금액과 기간 수정", expanded=True):
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -749,10 +779,31 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
         with c3:
             st.number_input("남은 기간(개월)", min_value=1, max_value=60, key="remaining_months")
 
-    render_section_head("INCOME PATH", "목표에 반영할 경제기회", "확정 가능성이 있는 기회와 경쟁형 기회를 구분합니다.")
-    eligible = ranked[ranked["eligible"]].head(6)
+    selected_ids = {str(value) for value in st.session_state.goal_opportunities}
+    selected_ranked = ranked[ranked["id"].astype(str).isin(selected_ids)]
+    valid_selected = selected_ranked[selected_ranked["eligible"]]
+    invalid_selected = selected_ranked[~selected_ranked["eligible"]]
+
+    render_section_head(
+        "INCOME PATH",
+        f"목표에 담은 경제기회 {len(selected_ranked)}개",
+        "선택한 기회가 현재 조건에 맞는지 다시 확인하고 계획에 반영합니다.",
+    )
+    if not invalid_selected.empty:
+        blocked_titles = ", ".join(clean_title(title) for title in invalid_selected["title"].head(2))
+        st.warning(
+            f"현재 입력 조건과 맞지 않는 {len(invalid_selected)}개 기회는 계산에서 제외했습니다: {blocked_titles}"
+        )
+
+    eligible = ranked[ranked["eligible"]]
+    selected_first = pd.concat(
+        [
+            eligible[eligible["id"].astype(str).isin(selected_ids)],
+            eligible[~eligible["id"].astype(str).isin(selected_ids)].head(6),
+        ]
+    ).drop_duplicates(subset="id")
     checkbox_cols = st.columns(2)
-    for index, (_, row) in enumerate(eligible.iterrows()):
+    for index, (_, row) in enumerate(selected_first.iterrows()):
         opportunity_id = str(row["id"])
         key = f"goal-check-{opportunity_id}"
         if key not in st.session_state:
@@ -765,7 +816,62 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
                 args=(opportunity_id, key),
             )
 
-    selected = opportunities[opportunities["id"].astype(str).isin(st.session_state.goal_opportunities)]
+    if not invalid_selected.empty:
+        with st.expander("조건이 맞지 않아 제외된 기회 정리"):
+            for _, row in invalid_selected.iterrows():
+                opportunity_id = str(row["id"])
+                key = f"goal-check-{opportunity_id}"
+                if key not in st.session_state:
+                    st.session_state[key] = True
+                st.checkbox(
+                    f"{clean_title(row['title'])} · {row['match_reason']}",
+                    key=key,
+                    on_change=sync_goal_check,
+                    args=(opportunity_id, key),
+                )
+
+    selected = opportunities[
+        opportunities["id"].astype(str).isin(valid_selected["id"].astype(str))
+    ].copy()
+    hourly_mask = selected["amount_note"].fillna("").str.contains("시급") & selected["amount_min"].eq(0)
+    if hourly_mask.any():
+        st.markdown("**시급형 근로기회 예상액 설정**")
+        st.caption("공고에 총 근로시간이 없어 아래 가정으로 세전 근로수입 범위를 계산합니다.")
+        work_hours, work_months = st.columns(2)
+        with work_hours:
+            st.number_input(
+                "주당 예상 근로시간",
+                min_value=1,
+                max_value=40,
+                step=1,
+                key="work_hours_per_week",
+            )
+        with work_months:
+            st.number_input(
+                "예상 근로 기간(개월)",
+                min_value=1,
+                max_value=12,
+                step=1,
+                key="work_months",
+            )
+
+        estimate_notes: list[str] = []
+        for index, row in selected[hourly_mask].iterrows():
+            estimate = calculate_hourly_income(
+                row["amount_note"],
+                weekly_hours=int(st.session_state.work_hours_per_week),
+                months=int(st.session_state.work_months),
+            )
+            if estimate is None:
+                continue
+            selected.at[index, "amount_min"] = estimate.income_min
+            selected.at[index, "amount_max"] = estimate.income_max
+            estimate_notes.append(
+                f"{clean_title(row['title'])}: 약 {format_money(estimate.income_min)}–{format_money(estimate.income_max)}"
+            )
+        if estimate_notes:
+            st.info(" · ".join(estimate_notes))
+
     plan = calculate_goal_plan(
         selected,
         target_amount=int(st.session_state.target_amount),
@@ -801,6 +907,20 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
             """,
             unsafe_allow_html=True,
         )
+
+    savings_total = plan.monthly_required * plan.remaining_months
+    planned_total = min(plan.current_amount + plan.expected_min + savings_total, plan.target_amount)
+    st.markdown(
+        f"""
+        <div class="path-grid">
+          <div class="path-step"><span>1 · 지금 가진 돈</span><b>{format_money(plan.current_amount)}</b><small>목표를 시작하는 기준 금액</small></div>
+          <div class="path-step"><span>2 · 선택한 경제기회</span><b>최소 {format_money(plan.expected_min)}</b><small>조건 충족·선발 시 받을 수 있는 비경쟁형 혜택</small></div>
+          <div class="path-step"><span>3 · 남은 기간 저축</span><b>{format_money(plan.monthly_required)} × {plan.remaining_months}개월</b><small>목표 부족분을 기간으로 나눈 월 적립액</small></div>
+          <div class="path-step"><span>4 · 예상 도달 금액</span><b>{format_money(planned_total)}</b><small>경쟁형 상금은 포함하지 않은 기본 경로</small></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     render_section_head(
         "SAVINGS",
@@ -839,20 +959,27 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
             projection_monthly = max(projection_monthly, int(product["min_monthly"]))
             if int(product["max_monthly"]) > 0:
                 projection_monthly = min(projection_monthly, int(product["max_monthly"]))
+        matched_term = int(product["matched_term_months"])
+        rate_term = int(product["rate_term_months"])
         projection = calculate_savings_projection(
             monthly_contribution=projection_monthly,
-            months=int(product["rate_term_months"]),
+            months=rate_term,
             base_rate=float(product["base_rate"]),
             max_rate=float(product["max_rate"]),
         )
-        if projection.monthly_contribution > 0:
+        if projection.monthly_contribution <= 0:
+            projection_text = "현재 목표는 이미 충족되어 추가 적립이 필요하지 않습니다."
+        elif matched_term != rate_term:
+            projection_text = (
+                f"목표는 {matched_term}개월이지만 공시 금리는 {rate_term}개월 기준입니다. "
+                "예상이자는 공식 페이지에서 기간별 금리를 확인하세요."
+            )
+        else:
             projection_text = (
                 f"월 {format_money(projection.monthly_contribution)} × {projection.months}개월 → "
                 f"원금 {format_money(projection.principal)} · 세전 이자 약 "
                 f"{format_money(projection.base_interest)}–{format_money(projection.max_interest)}"
             )
-        else:
-            projection_text = "현재 목표는 이미 충족되어 추가 적립이 필요하지 않습니다."
 
         name, rate, condition, action = st.columns([2.1, 1, 1.8, 0.8], vertical_alignment="center")
         with name:

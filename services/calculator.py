@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 
 import pandas as pd
@@ -28,6 +29,44 @@ class SavingsProjection:
     max_interest: int
     base_maturity: int
     max_maturity: int
+
+
+@dataclass(frozen=True)
+class HourlyIncomeProjection:
+    hourly_min: int
+    hourly_max: int
+    weekly_hours: int
+    months: int
+    income_min: int
+    income_max: int
+
+
+def calculate_hourly_income(
+    amount_note: object,
+    *,
+    weekly_hours: int,
+    months: int,
+) -> HourlyIncomeProjection | None:
+    """Estimate gross income from a Korean hourly-wage range in an opportunity note."""
+    values = re.findall(r"([\d,]+)\s*원", str(amount_note))
+    if "시급" not in str(amount_note) or not values:
+        return None
+
+    hourly_min = int(values[0].replace(",", ""))
+    hourly_max = int(values[1].replace(",", "")) if len(values) > 1 else hourly_min
+    weekly_hours = max(int(weekly_hours), 0)
+    months = max(int(months), 1)
+    estimated_weeks = months * 4.345
+    income_min = round(hourly_min * weekly_hours * estimated_weeks)
+    income_max = round(hourly_max * weekly_hours * estimated_weeks)
+    return HourlyIncomeProjection(
+        hourly_min=hourly_min,
+        hourly_max=max(hourly_max, hourly_min),
+        weekly_hours=weekly_hours,
+        months=months,
+        income_min=income_min,
+        income_max=max(income_max, income_min),
+    )
 
 
 def calculate_goal_plan(
