@@ -10,7 +10,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from services.calculator import calculate_goal_plan, format_money
-from services.market import build_market_index, build_price_history
+from services.market import build_reference_history, market_snapshot_summary
 from services.recommendation import filter_opportunities, rank_opportunities, recommend_savings
 
 
@@ -200,7 +200,7 @@ def opportunity_data_note() -> str:
             f"● {meta.get('school', '학교')} 공식 공고 {int(meta.get('count', 0))}건"
             f" · 마지막 수집 {fetched_at}"
         )
-    return "● 교내 공고와 이색자산 시세는 화면 검증용 데모 데이터입니다"
+    return "● 교내 공고는 화면 검증용 데모 데이터입니다"
 
 
 def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
@@ -230,6 +230,31 @@ def init_state(opportunities: pd.DataFrame, alternatives: pd.DataFrame) -> None:
 
 def clean_title(value: object) -> str:
     return str(value).replace("[데모] ", "").strip()
+
+
+def format_asset_value(value: object, currency: object) -> str:
+    amount = float(value)
+    unit = str(currency)
+    if unit == "USD":
+        return f"${amount:,.0f}"
+    if unit == "INDEX":
+        return f"{amount:,.1f} pt"
+    return format_money(amount)
+
+
+def asset_change_text(asset: pd.Series) -> str:
+    if pd.isna(asset.get("change_percent")):
+        return "변동률 미제공"
+    return f"{asset['change_period']} {float(asset['change_percent']):+.1f}%"
+
+
+def asset_reference_history(asset: pd.Series) -> pd.DataFrame:
+    return build_reference_history(
+        asset["current_value"],
+        asset.get("change_percent"),
+        as_of=str(asset["as_of"]),
+        period_days=int(asset.get("change_days", 0) or 0),
+    )
 
 
 def opportunity_amount(row: pd.Series) -> str:
@@ -536,14 +561,13 @@ def render_home(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
         )
         st.button("목표계획 열기", key="home-goal", type="primary", width="stretch", on_click=go_to, args=("목표계획",))
     with market_col:
-        market = build_market_index(alternatives)
-        change = (market.iloc[-1]["price"] / market.iloc[0]["price"] - 1) * 100
+        market = market_snapshot_summary(alternatives)
         st.markdown(
             f"""
             <div class="soft-card">
-              <div class="label">대체자산 시장지수 · 6개월</div>
-              <div class="big">{market.iloc[-1]['price']:,.1f} <span class="{'positive' if change >= 0 else 'negative'}" style="font-size:.88rem">{change:+.1f}%</span></div>
-              <div class="desc">레고·TCG·시계·스니커즈·와인 시세의 흐름을 같은 기준으로 비교합니다.</div>
+              <div class="label">대체자산 실제 시세 스냅샷</div>
+              <div class="big">{market['assets']}개 품목 · {market['sources']}개 출처</div>
+              <div class="desc">서로 다른 통화와 가격 기준을 억지로 합치지 않고 품목별 출처와 기준일을 함께 보여드려요.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -831,44 +855,48 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
 
 def render_asset_list(alternatives: pd.DataFrame) -> None:
     st.markdown('<div class="eyebrow">ALTERNATIVE MARKET</div>', unsafe_allow_html=True)
-    st.title("낯선 자산도, 가격 흐름부터 편하게")
-    st.markdown('<div class="lead">구매 추천이 아니라 여러 수집형 자산의 시세·변동성·환금성을 같은 형식으로 비교합니다.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="demo-note">● 모든 가격은 UI 검증을 위한 예시이며 실제 투자 판단에 사용할 수 없습니다</div>', unsafe_allow_html=True)
+    st.title("낯선 자산도, 가격 기준부터 정확하게")
+    st.markdown('<div class="lead">레고·TCG·스니커즈·시계·와인의 공개 시장 데이터를 출처와 기준일을 붙여 비교합니다.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="demo-note">● 실제 공개 시세 스냅샷 · 원 통화 표시 · 매수 추천 아님</div>', unsafe_allow_html=True)
 
     categories = ["전체"] + alternatives["category"].drop_duplicates().tolist()
     category = st.radio("자산 종류", categories, horizontal=True, label_visibility="collapsed", key="asset_category")
     view = alternatives if category == "전체" else alternatives[alternatives["category"] == category]
-    market = build_market_index(view)
-    change = (market.iloc[-1]["price"] / market.iloc[0]["price"] - 1) * 100
-    change_class = "positive" if change >= 0 else "negative"
+    coverage = market_snapshot_summary(view)
     st.markdown(
-        f'<div class="section-head"><div class="eyebrow">MARKET INDEX · 6 MONTHS</div><div class="market-number">{market.iloc[-1]["price"]:,.1f} '
-        f'<span class="{change_class}" style="font-size:1rem">{change:+.1f}%</span></div><p>{escape(category)} 자산을 100에서 시작한 지수로 환산한 데모입니다.</p></div>',
+        f'<div class="section-head"><div class="eyebrow">VERIFIED SNAPSHOTS</div>'
+        f'<div class="market-number">{coverage["assets"]}개 품목</div>'
+        f'<p>{escape(category)} · {coverage["sources"]}개 공개 출처 · 품목별 통화와 가격 기준을 그대로 표시합니다.</p></div>',
         unsafe_allow_html=True,
     )
-    render_price_chart(market, height=230)
 
-    render_section_head("ASSETS", "시세를 확인할 품목")
+    render_section_head("ASSETS", "실제 시세를 확인할 품목", "가격 기준이 다르므로 숫자만 단순 비교하지 마세요.")
     for _, asset in view.iterrows():
         asset_id = str(asset["id"])
-        history = build_price_history(asset["current_price"], asset["change_6m"], seed_key=asset_id)
+        history = asset_reference_history(asset)
         info, spark, price, action = st.columns([2.2, 1.45, 1.05, .95], vertical_alignment="center")
         with info:
             st.markdown(
                 f'<div class="asset-row"><div class="asset-name">{category_icon(str(asset["category"]))} {escape(clean_title(asset["item"]))}</div>'
-                f'<div class="asset-meta">{escape(str(asset["category"]))} · 위험 {escape(str(asset["risk"]))} · 환금성 {escape(str(asset["liquidity"]))}</div></div>',
+                f'<div class="asset-meta">{escape(str(asset["price_basis"]))} · 위험 {escape(str(asset["risk"]))} · 환금성 {escape(str(asset["liquidity"]))}</div></div>',
                 unsafe_allow_html=True,
             )
         with spark:
-            render_price_chart(history, height=64, compact=True)
+            if history.empty:
+                st.caption("현재가 스냅샷만 제공")
+            else:
+                render_price_chart(history, height=64, compact=True)
         with price:
-            trend_class = "positive" if asset["change_6m"] >= 0 else "negative"
+            change = asset.get("change_percent")
+            trend_class = "" if pd.isna(change) else ("positive" if float(change) >= 0 else "negative")
             st.markdown(
-                f'<div class="asset-price">{format_money(asset["current_price"])}</div><div class="asset-delta {trend_class}">6개월 {asset["change_6m"]:+.1f}%</div>',
+                f'<div class="asset-price">{format_asset_value(asset["current_value"], asset["currency"])}</div>'
+                f'<div class="asset-delta {trend_class}">{escape(asset_change_text(asset))}</div>'
+                f'<div style="color:#8b95a1;font-size:.72rem">{escape(str(asset["as_of"]))}</div>',
                 unsafe_allow_html=True,
             )
         with action:
-            st.button("시세 보기", key=f"asset-open-{asset_id}", width="stretch", on_click=open_asset, args=(asset_id,))
+            st.button("자세히", key=f"asset-open-{asset_id}", width="stretch", on_click=open_asset, args=(asset_id,))
         st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)
 
 
@@ -876,38 +904,41 @@ def render_asset_detail(alternatives: pd.DataFrame) -> None:
     matches = alternatives[alternatives["id"].astype(str) == st.session_state.selected_asset]
     asset = matches.iloc[0] if not matches.empty else alternatives.iloc[0]
     asset_id = str(asset["id"])
-    history = build_price_history(asset["current_price"], asset["change_6m"], seed_key=asset_id)
-    trend_class = "positive" if asset["change_6m"] >= 0 else "negative"
+    history = asset_reference_history(asset)
+    change = asset.get("change_percent")
+    trend_class = "" if pd.isna(change) else ("positive" if float(change) >= 0 else "negative")
 
     st.button("← 시장으로 돌아가기", key="asset-back", on_click=close_asset)
     st.markdown(
         f"""
         <div class="detail-hero">
-          <div class="op-tags"><span class="pill blue">{escape(str(asset['category']))}</span><span class="pill">6개월 시세</span></div>
+          <div class="op-tags"><span class="pill blue">{escape(str(asset['category']))}</span><span class="pill">{escape(str(asset['source_name']))}</span></div>
           <h1>{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}</h1>
           <div class="lead">{escape(str(asset['summary']))}</div>
-          <div class="detail-amount">{format_money(asset['current_price'])} <span class="{trend_class}" style="font-size:1rem">6개월 {asset['change_6m']:+.1f}%</span></div>
+          <div class="detail-amount">{format_asset_value(asset['current_value'], asset['currency'])} <span class="{trend_class}" style="font-size:1rem">{escape(asset_change_text(asset))}</span></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    periods = {"1개월": 5, "3개월": 13, "6개월": 26}
-    period = st.radio("조회 기간", list(periods), horizontal=True, label_visibility="collapsed", key="asset_period")
-    chart_data = history.tail(periods[period]).reset_index(drop=True)
-    render_price_chart(chart_data, height=330)
+    if history.empty:
+        st.info("이 출처에서는 비교 가능한 기간 변동률을 제공하지 않아 현재 시세만 표시합니다.")
+    else:
+        render_section_head("REFERENCE CHANGE", f"{asset['change_period']} 변화 요약", "출처가 제공한 변동률로 계산한 시작·현재 두 시점 비교이며, 중간 가격을 추정하지 않습니다.")
+        render_price_chart(history, height=280)
 
-    low = int(chart_data["price"].min())
-    high = int(chart_data["price"].max())
     c1, c2, c3, c4 = st.columns(4)
     facts = [
-        ("기간 내 최저", format_money(low)),
-        ("기간 내 최고", format_money(high)),
+        ("가격 기준", str(asset["price_basis"])),
+        ("기준일", str(asset["as_of"])),
         ("환금성", str(asset["liquidity"])),
         ("위험도", str(asset["risk"])),
     ]
     for column, (label, value) in zip([c1, c2, c3, c4], facts):
         with column:
             st.markdown(f'<div class="soft-card"><div class="label">{escape(label)}</div><div class="big" style="font-size:1.05rem">{escape(value)}</div></div>', unsafe_allow_html=True)
+
+    st.markdown(f"**상태 기준:** {escape(str(asset['condition']))}")
+    st.link_button(f"{asset['source_name']}에서 원문 확인", str(asset["source_url"]), width="stretch")
 
     favorite = asset_id in st.session_state.favorite_assets
     st.button(
@@ -918,7 +949,7 @@ def render_asset_detail(alternatives: pd.DataFrame) -> None:
         on_click=toggle_asset,
         args=(asset_id,),
     )
-    st.markdown('<div class="warning-box">대체자산은 거래량이 적고 상태·진품 여부·보관 비용에 따라 실제 가격 차이가 큽니다. 이 화면은 가격 탐색 방식을 보여주는 데모이며 매수 추천이 아닙니다.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="warning-box">대체자산은 상태·진품 여부·사이즈·보관 비용·거래 수수료에 따라 실제 체결 가격이 달라집니다. 공개 출처의 기준일 스냅샷이며 매수 추천이나 수익 예측이 아닙니다.</div>', unsafe_allow_html=True)
 
 
 def render_favorites(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
@@ -940,7 +971,10 @@ def render_favorites(ranked: pd.DataFrame, alternatives: pd.DataFrame) -> None:
             for _, asset in favorite_assets.iterrows():
                 info, action = st.columns([4, 1], vertical_alignment="center")
                 with info:
-                    st.markdown(f"**{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}**  \n{format_money(asset['current_price'])} · 6개월 {asset['change_6m']:+.1f}%")
+                    st.markdown(
+                        f"**{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}**  \n"
+                        f"{format_asset_value(asset['current_value'], asset['currency'])} · {escape(asset_change_text(asset))} · {escape(str(asset['as_of']))}"
+                    )
                 with action:
                     st.button("시세 보기", key=f"saved-asset-{asset['id']}", width="stretch", on_click=open_asset, args=(str(asset["id"]),))
                 st.markdown('<div class="row-divider"></div>', unsafe_allow_html=True)

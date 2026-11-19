@@ -2,25 +2,43 @@ import unittest
 
 import pandas as pd
 
-from services.market import build_market_index, build_price_history
+from services.market import build_reference_history, market_snapshot_summary
 
 
-class MarketHistoryTest(unittest.TestCase):
-    def test_history_ends_at_current_price(self):
-        history = build_price_history(189_000, 7.8, seed_key="lego")
-        self.assertEqual(len(history), 26)
-        self.assertEqual(history.iloc[-1]["price"], 189_000)
-        self.assertLess(history.iloc[0]["price"], history.iloc[-1]["price"])
+class MarketReferenceHistoryTest(unittest.TestCase):
+    def test_history_contains_only_sourced_comparison_endpoints(self):
+        history = build_reference_history(
+            104,
+            4.0,
+            as_of="2026-11-19",
+            period_days=365,
+        )
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history.iloc[0]["price"], 100)
+        self.assertEqual(history.iloc[-1]["price"], 104)
+        self.assertEqual((history.iloc[-1]["date"] - history.iloc[0]["date"]).days, 365)
 
-    def test_market_index_starts_near_one_hundred(self):
+    def test_missing_change_returns_no_invented_history(self):
+        history = build_reference_history(
+            290,
+            None,
+            as_of="2026-11-19",
+            period_days=0,
+        )
+        self.assertTrue(history.empty)
+
+    def test_snapshot_summary_does_not_mix_values(self):
         assets = pd.DataFrame(
             [
-                {"id": "a", "current_price": 100_000, "change_6m": 10.0},
-                {"id": "b", "current_price": 200_000, "change_6m": -5.0},
+                {"category": "레고", "source_name": "A"},
+                {"category": "TCG", "source_name": "B"},
+                {"category": "레고", "source_name": "A"},
             ]
         )
-        market = build_market_index(assets)
-        self.assertAlmostEqual(market.iloc[0]["price"], 100.0, places=2)
+        self.assertEqual(
+            market_snapshot_summary(assets),
+            {"assets": 3, "categories": 2, "sources": 2},
+        )
 
 
 if __name__ == "__main__":
