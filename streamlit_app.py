@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from services.calculator import calculate_goal_plan, format_money
 from services.market import build_market_index, build_price_history
@@ -283,6 +284,7 @@ def open_opportunity(opportunity_id: str) -> None:
     st.session_state.selected_opportunity = opportunity_id
     st.session_state.opportunity_detail = True
     st.session_state.main_nav = "경제기회"
+    st.session_state.opportunity_scroll_top = True
 
 
 def close_opportunity() -> None:
@@ -539,6 +541,27 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
 
 
 def render_opportunity_detail(ranked: pd.DataFrame) -> None:
+    if st.session_state.pop("opportunity_scroll_top", False):
+        components.html(
+            """
+            <script>
+              const scrollTop = () => {
+                const doc = window.parent.document;
+                const container =
+                  doc.querySelector('[data-testid="stAppViewContainer"]') ||
+                  doc.querySelector('section.main');
+                if (container) container.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                window.parent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+              };
+              window.parent.requestAnimationFrame(() =>
+                window.parent.requestAnimationFrame(scrollTop)
+              );
+              window.parent.setTimeout(scrollTop, 100);
+            </script>
+            """,
+            height=0,
+        )
+
     selected_id = st.session_state.selected_opportunity
     matches = ranked[ranked["id"].astype(str) == selected_id]
     row = matches.iloc[0] if not matches.empty else ranked.iloc[0]
