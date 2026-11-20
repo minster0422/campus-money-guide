@@ -1122,7 +1122,7 @@ def render_asset_list(alternatives: pd.DataFrame) -> None:
     if not tcg_view.empty:
         render_section_head(
             "POKÉMON TCG",
-            "Call of Legends 대표 카드 5종",
+            "Call of Legends 카드 시세",
             "실제 고화질 카드 이미지와 카드별 시장가를 함께 확인합니다.",
         )
         columns = st.columns(len(tcg_view), gap="small")
