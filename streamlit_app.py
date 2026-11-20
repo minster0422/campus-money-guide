@@ -161,6 +161,18 @@ st.markdown(
     .asset-meta { color: var(--sub); font-size: .78rem; margin-top: .3rem; }
     .asset-price { font-size: .95rem; font-weight: 800; text-align: right; }
     .asset-delta { font-size: .76rem; text-align: right; margin-top: .25rem; }
+    .asset-thumb {
+        width: 76px; height: 106px; border-radius: 10px; overflow: hidden;
+        display: grid; place-items: center; background: var(--surface); margin: .45rem auto;
+    }
+    .asset-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .asset-thumb-placeholder { color: var(--sub); font-size: 1.5rem; }
+    .asset-card-image {
+        max-width: 260px; margin: .4rem auto 1rem; padding: .8rem;
+        border-radius: 22px; background: linear-gradient(145deg, #f5f8fc, #eaf3ff);
+        box-shadow: 0 14px 36px rgba(25,31,40,.10);
+    }
+    .asset-card-image img { width: 100%; display: block; border-radius: 14px; }
     .warning-box { background: #fff7e8; color: #8b5e00; border-radius: 16px; padding: .9rem 1rem; font-size: .82rem; line-height: 1.5; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--sub); background: var(--surface); border-radius: 22px; }
     .footer-note { color: var(--sub); font-size: .76rem; margin-top: 3rem; text-align: center; }
@@ -204,7 +216,7 @@ st.markdown(
 )
 
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     opportunities = pd.read_csv(DATA_DIR / "opportunities.csv")
     savings = pd.read_csv(DATA_DIR / "savings.csv")
@@ -289,6 +301,14 @@ def asset_reference_history(asset: pd.Series) -> pd.DataFrame:
         as_of=str(asset["as_of"]),
         period_days=int(asset.get("change_days", 0) or 0),
     )
+
+
+def asset_image_path(asset: pd.Series) -> Path | None:
+    value = asset.get("image_path")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    path = ROOT / value
+    return path if path.exists() else None
 
 
 def opportunity_amount(row: pd.Series) -> str:
@@ -1098,7 +1118,17 @@ def render_asset_list(alternatives: pd.DataFrame) -> None:
     for _, asset in view.iterrows():
         asset_id = str(asset["id"])
         history = asset_reference_history(asset)
-        info, spark, price, action = st.columns([2.2, 1.45, 1.05, .95], vertical_alignment="center")
+        image_path = asset_image_path(asset)
+        has_image = image_path is not None
+        visual, info, spark, price, action = st.columns([.65, 2.05, 1.35, 1.05, .9], vertical_alignment="center")
+        with visual:
+            if has_image:
+                st.image(str(image_path), width=90)
+            else:
+                st.markdown(
+                    f'<div class="asset-thumb"><div class="asset-thumb-placeholder">{category_icon(str(asset["category"]))}</div></div>',
+                    unsafe_allow_html=True,
+                )
         with info:
             st.markdown(
                 f'<div class="asset-row"><div class="asset-name">{category_icon(str(asset["category"]))} {escape(clean_title(asset["item"]))}</div>'
@@ -1131,19 +1161,31 @@ def render_asset_detail(alternatives: pd.DataFrame) -> None:
     history = asset_reference_history(asset)
     change = asset.get("change_percent")
     trend_class = "" if pd.isna(change) else ("positive" if float(change) >= 0 else "negative")
+    image_path = asset_image_path(asset)
+    has_image = image_path is not None
 
     st.button("← 시장으로 돌아가기", key="asset-back", on_click=close_asset)
-    st.markdown(
-        f"""
+    hero = f"""
         <div class="detail-hero">
           <div class="op-tags"><span class="pill blue">{escape(str(asset['category']))}</span><span class="pill">{escape(str(asset['source_name']))}</span></div>
           <h1>{category_icon(str(asset['category']))} {escape(clean_title(asset['item']))}</h1>
           <div class="lead">{escape(str(asset['summary']))}</div>
           <div class="detail-amount">{format_asset_value(asset['current_value'], asset['currency'])} <span class="{trend_class}" style="font-size:1rem">{escape(asset_change_text(asset))}</span></div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    if has_image:
+        image_column, detail_column = st.columns([.78, 2.22], gap="large", vertical_alignment="center")
+        with image_column:
+            st.image(str(image_path), caption=clean_title(asset["item"]), width=260)
+            image_credit_url = asset.get("image_source_url")
+            image_source = asset.get("image_source")
+            if isinstance(image_credit_url, str) and image_credit_url.startswith("http"):
+                st.link_button(f"이미지 출처 · {image_source}", image_credit_url, width="stretch")
+        with detail_column:
+            st.markdown(hero, unsafe_allow_html=True)
+            st.caption("카드 이미지와 시세 출처는 서로 다를 수 있으며, 가격은 상태·등급·언어에 따라 크게 달라집니다.")
+    else:
+        st.markdown(hero, unsafe_allow_html=True)
     if history.empty:
         st.info("이 출처에서는 비교 가능한 기간 변동률을 제공하지 않아 현재 시세만 표시합니다.")
     else:

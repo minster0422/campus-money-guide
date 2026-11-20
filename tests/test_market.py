@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import pandas as pd
 
@@ -39,6 +40,15 @@ class MarketReferenceHistoryTest(unittest.TestCase):
             market_snapshot_summary(assets),
             {"assets": 3, "categories": 2, "sources": 2},
         )
+
+    def test_tcg_snapshot_has_matching_card_image_metadata(self):
+        data_path = Path(__file__).parents[1] / "data" / "alternative_assets.csv"
+        assets = pd.read_csv(data_path)
+        card = assets.loc[assets["id"] == "alt-pokemon-charizard"].iloc[0]
+        self.assertIn("sv3pt5/199", card["image_url"])
+        self.assertEqual(card["image_source"], "Pokémon TCG API")
+        image_path = Path(__file__).parents[1] / card["image_path"]
+        self.assertTrue(image_path.exists())
 
 
 if __name__ == "__main__":
