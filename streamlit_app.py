@@ -173,6 +173,10 @@ st.markdown(
         box-shadow: 0 14px 36px rgba(25,31,40,.10);
     }
     .asset-card-image img { width: 100%; display: block; border-radius: 14px; }
+    .tcg-card-kicker { color: var(--blue); font-size: .75rem; font-weight: 800; letter-spacing: .06em; margin-top: .15rem; }
+    .tcg-card-name { font-size: 1rem; font-weight: 800; letter-spacing: -.025em; line-height: 1.35; margin: .28rem 0 .15rem; }
+    .tcg-card-price { font-size: 1.12rem; font-weight: 800; letter-spacing: -.03em; }
+    .tcg-card-meta { color: var(--sub); font-size: .75rem; line-height: 1.45; margin: .15rem 0 .55rem; }
     .warning-box { background: #fff7e8; color: #8b5e00; border-radius: 16px; padding: .9rem 1rem; font-size: .82rem; line-height: 1.5; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--sub); background: var(--surface); border-radius: 22px; }
     .footer-note { color: var(--sub); font-size: .76rem; margin-top: 3rem; text-align: center; }
@@ -1114,8 +1118,40 @@ def render_asset_list(alternatives: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
 
-    render_section_head("ASSETS", "실제 시세를 확인할 품목", "가격 기준이 다르므로 숫자만 단순 비교하지 마세요.")
-    for _, asset in view.iterrows():
+    tcg_view = view[view["category"] == "TCG"]
+    if not tcg_view.empty:
+        render_section_head(
+            "POKÉMON TCG",
+            "Call of Legends 대표 카드 5종",
+            "실제 고화질 카드 이미지와 카드별 시장가를 함께 확인합니다.",
+        )
+        columns = st.columns(len(tcg_view), gap="small")
+        for column, (_, asset) in zip(columns, tcg_view.iterrows()):
+            asset_id = str(asset["id"])
+            image_path = asset_image_path(asset)
+            card_name = clean_title(asset["item"]).replace("포켓몬 ", "")
+            card_number = card_name.rsplit(" ", 1)[-1]
+            with column:
+                with st.container(border=True):
+                    if image_path is not None:
+                        st.image(str(image_path), width="stretch")
+                    st.markdown(
+                        f'<div class="tcg-card-kicker">CALL OF LEGENDS · {escape(card_number)}</div>'
+                        f'<div class="tcg-card-name">{escape(card_name)}</div>'
+                        f'<div class="tcg-card-price">{format_asset_value(asset["current_value"], asset["currency"])}</div>'
+                        f'<div class="tcg-card-meta">미등급 시장가 · {escape(str(asset["as_of"]))}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.button("카드 상세", key=f"asset-card-{asset_id}", width="stretch", on_click=open_asset, args=(asset_id,))
+
+    row_view = view[view["category"] != "TCG"]
+    if not row_view.empty:
+        render_section_head(
+            "OTHER ASSETS" if not tcg_view.empty else "ASSETS",
+            "다른 실물·수집 자산",
+            "가격 기준이 다르므로 숫자만 단순 비교하지 마세요.",
+        )
+    for _, asset in row_view.iterrows():
         asset_id = str(asset["id"])
         history = asset_reference_history(asset)
         image_path = asset_image_path(asset)

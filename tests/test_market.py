@@ -41,14 +41,20 @@ class MarketReferenceHistoryTest(unittest.TestCase):
             {"assets": 3, "categories": 2, "sources": 2},
         )
 
-    def test_tcg_snapshot_has_matching_card_image_metadata(self):
+    def test_tcg_snapshots_have_five_matching_high_resolution_images(self):
         data_path = Path(__file__).parents[1] / "data" / "alternative_assets.csv"
         assets = pd.read_csv(data_path)
-        card = assets.loc[assets["id"] == "alt-pokemon-charizard"].iloc[0]
-        self.assertIn("sv3pt5/199", card["image_url"])
-        self.assertEqual(card["image_source"], "Pokémon TCG API")
-        image_path = Path(__file__).parents[1] / card["image_path"]
-        self.assertTrue(image_path.exists())
+        cards = assets.loc[assets["category"] == "TCG"]
+
+        self.assertEqual(len(cards), 5)
+        self.assertEqual(set(cards["source_name"]), {"TCG Stacked"})
+        for _, card in cards.iterrows():
+            self.assertIn("images.pokemontcg.io/col1/", card["image_url"])
+            self.assertTrue(card["image_url"].endswith("_hires.png"))
+            self.assertEqual(card["image_source"], "Pokémon TCG API")
+            image_path = Path(__file__).parents[1] / card["image_path"]
+            self.assertTrue(image_path.exists())
+            self.assertGreater(image_path.stat().st_size, 500_000)
 
 
 if __name__ == "__main__":
