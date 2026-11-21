@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 import pandas as pd
 
@@ -47,6 +48,22 @@ class RecommendationRegionTests(unittest.TestCase):
         )
         self.assertTrue(bool(ranked.iloc[0]["eligible"]))
         self.assertIn("지역 조건 일치", ranked.iloc[0]["match_reason"])
+
+    def test_closed_notice_is_not_eligible_or_recommended(self):
+        closed = opportunity("제한 없음")
+        closed.loc[0, "deadline"] = pd.Timestamp("2026-11-20")
+        ranked = rank_opportunities(
+            closed,
+            grade=1,
+            residence="전체",
+            available_hours=6,
+            region="",
+            as_of=date(2026, 11, 21),
+        )
+        self.assertTrue(bool(ranked.iloc[0]["is_closed"]))
+        self.assertFalse(bool(ranked.iloc[0]["eligible"]))
+        self.assertEqual(int(ranked.iloc[0]["match_score"]), 0)
+        self.assertIn("신청 마감", ranked.iloc[0]["match_reason"])
 
 
 class OpportunityFilterTests(unittest.TestCase):
@@ -101,6 +118,12 @@ class OpportunityFilterTests(unittest.TestCase):
             region="",
         )
         self.assertTrue(bool(ranked.iloc[0]["eligible"]))
+
+    def test_can_hide_closed_notices(self):
+        ranked = self.ranked.copy()
+        ranked["is_closed"] = [True, False]
+        result = filter_opportunities(ranked, include_closed=False)
+        self.assertEqual(result["title"].tolist(), ["동계방학 근로장학생"])
 
 
 class SavingsRecommendationTests(unittest.TestCase):

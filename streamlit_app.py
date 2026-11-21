@@ -13,6 +13,7 @@ from services.calculator import (
     calculate_goal_plan,
     calculate_hourly_income,
     calculate_savings_projection,
+    compare_goal_scenarios,
     format_money,
 )
 from services.market import build_reference_history, market_snapshot_summary
@@ -121,6 +122,7 @@ st.markdown(
     .pill.blue { background: var(--blue-soft); color: var(--blue); }
     .pill.green { background: #e8f8f3; color: #008f69; }
     .pill.amber { background: #fff3df; color: #b85c00; }
+    .pill.red { background: #ffebee; color: var(--red); }
     .op-title { font-size: 1.06rem; font-weight: 800; letter-spacing: -.025em; margin-bottom: .35rem; }
     .op-meta { color: var(--sub); font-size: .82rem; line-height: 1.55; }
     .op-money { font-size: .88rem; font-weight: 800; color: var(--ink); margin-top: .45rem; }
@@ -148,6 +150,13 @@ st.markdown(
     .impact-card { background: #eef8f5; border-radius: 18px; padding: 1.05rem; margin-top: .8rem; }
     .impact-card b { font-size: 1.05rem; }
     .impact-card p { color: var(--sub); font-size: .82rem; margin: .35rem 0 0; }
+    .scenario-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem; margin: 1rem 0 .75rem; }
+    .scenario-card { border: 1px solid var(--line); border-radius: 18px; padding: 1.1rem; background: #fff; }
+    .scenario-card.active { border-color: #b9d6ff; background: var(--blue-soft); }
+    .scenario-card .label { color: var(--sub); font-size: .78rem; }
+    .scenario-card .amount { font-size: 1.38rem; font-weight: 800; letter-spacing: -.04em; margin: .32rem 0; }
+    .scenario-card .desc { color: var(--sub); font-size: .78rem; line-height: 1.5; }
+    .scenario-impact { color: #1769e0; font-size: .9rem; font-weight: 800; margin: .35rem 0 1rem; }
     .path-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .65rem; margin-top: 1rem; }
     .path-step { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 1rem; }
     .path-step span { color: var(--sub); display: block; font-size: .74rem; margin-bottom: .35rem; }
@@ -207,6 +216,7 @@ st.markdown(
         .quick-plan h2 { font-size: 1.35rem !important; }
         .quick-plan-grid { grid-template-columns: 1fr; }
         .path-grid { grid-template-columns: 1fr 1fr; }
+        .scenario-grid { grid-template-columns: 1fr; }
         .home-summary { padding: 1.3rem; border-radius: 20px; margin-top: 1.2rem; }
         .home-summary h2 { font-size: 1.35rem !important; margin-bottom: 1rem; }
         .section-head { margin-top: 2.1rem; }
@@ -480,6 +490,13 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
         if region_label != "제한 없음"
         else ""
     )
+    is_closed = bool(row.get("is_closed", False))
+    deadline_pill_class = "pill red" if is_closed else "pill"
+    match_pill = (
+        ""
+        if is_closed
+        else f'<span class="pill green">{int(row.get("match_score", 0))}% 일치</span>'
+    )
     left, right = st.columns([4.2, 1.15], vertical_alignment="center")
     with left:
         st.markdown(
@@ -487,8 +504,8 @@ def render_opportunity_row(row: pd.Series, *, prefix: str, show_actions: bool = 
             <div class="op-row">
               <div class="op-tags">
                 <span class="pill blue">{escape(str(row['category']))}</span>
-                <span class="pill">{escape(deadline_label(row['deadline']))}</span>
-                <span class="pill green">{int(row.get('match_score', 0))}% 일치</span>
+                <span class="{deadline_pill_class}">{escape(deadline_label(row['deadline']))}</span>
+                {match_pill}
                 {region_pill}
               </div>
               <div class="op-title">{title}</div>
@@ -691,7 +708,7 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
     render_profile_controls(ranked)
-    search_col, category_col, sort_col = st.columns([1.8, 1, 1])
+    search_col, category_col, deadline_col, sort_col = st.columns([1.7, 1, 1, 1])
     with search_col:
         query = st.text_input(
             "경제기회 검색",
@@ -705,6 +722,12 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
             key="opportunity_category_filter",
             placeholder="전체 카테고리",
         )
+    with deadline_col:
+        deadline_filter = st.selectbox(
+            "마감 범위",
+            ["진행 중 전체", "7일 이내", "14일 이내", "마감 포함"],
+            key="opportunity_deadline_filter",
+        )
     with sort_col:
         sort_by = st.selectbox(
             "정렬",
@@ -712,11 +735,14 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
             key="opportunity_sort",
         )
 
+    deadline_days = {"7일 이내": 7, "14일 이내": 14}.get(deadline_filter)
     filtered = filter_opportunities(
         ranked,
         query=query,
         categories=selected_categories,
         sort_by=sort_by,
+        include_closed=deadline_filter == "마감 포함",
+        deadline_within_days=deadline_days,
     )
     eligible = filtered[filtered["eligible"]]
     condition_check = filtered[~filtered["eligible"]]
@@ -730,8 +756,8 @@ def render_opportunity_list(ranked: pd.DataFrame) -> None:
     if not condition_check.empty:
         render_section_head(
             "CHECK CONDITIONS",
-            f"추가 조건을 확인할 기회 {len(condition_check)}개",
-            "학년·지역·활동시간 조건이 맞지 않거나 확인이 필요한 공고입니다.",
+            f"추가 조건·마감을 확인할 기회 {len(condition_check)}개",
+            "학년·지역·활동시간이 맞지 않거나 이미 마감된 공고입니다.",
         )
         for _, row in condition_check.iterrows():
             render_opportunity_row(row, prefix="condition-check")
@@ -774,6 +800,7 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
     matches = ranked[ranked["id"].astype(str) == selected_id]
     row = matches.iloc[0] if not matches.empty else ranked.iloc[0]
     opportunity_id = str(row["id"])
+    is_closed = bool(row.get("is_closed", False))
     deadline = (
         "공고 원문 확인"
         if pd.isna(row["deadline"])
@@ -781,13 +808,19 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
     )
     weekly_hours = "해당 없음" if int(row["weekly_hours"]) == 0 else f"{int(row['weekly_hours'])}시간"
     region_requirement = region_requirement_label(row)
+    detail_deadline_class = "pill red" if is_closed else "pill"
+    detail_match_pill = (
+        ""
+        if is_closed
+        else f'<span class="pill green">{int(row["match_score"])}% 일치</span>'
+    )
 
     st.button("← 경제기회 목록", key="opportunity-back", on_click=close_opportunity)
     st.markdown('<div class="eyebrow" style="margin-top:1.35rem">OPPORTUNITY DETAIL</div>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <div class="detail-hero">
-          <div class="op-tags"><span class="pill blue">{escape(str(row['category']))}</span><span class="pill">{escape(deadline_label(row['deadline']))}</span><span class="pill green">{int(row['match_score'])}% 일치</span></div>
+          <div class="op-tags"><span class="pill blue">{escape(str(row['category']))}</span><span class="{detail_deadline_class}">{escape(deadline_label(row['deadline']))}</span>{detail_match_pill}</div>
           <h1>{escape(clean_title(row['title']))}</h1>
           <div class="lead">{escape(str(row['organization']))} · {escape(str(row['summary']))}</div>
           <div class="detail-amount">{escape(str(row['benefit_type']))} · {escape(opportunity_amount(row))}</div>
@@ -816,7 +849,15 @@ def render_opportunity_detail(ranked: pd.DataFrame) -> None:
             f'<div class="reason-box"><b>나에게 추천된 이유</b><p>{escape(str(row["match_reason"]))}</p></div>',
             unsafe_allow_html=True,
         )
-        if bool(row["eligible"]):
+        if is_closed:
+            st.button(
+                "신청이 마감된 공고예요",
+                key=f"detail-goal-closed-{opportunity_id}",
+                width="stretch",
+                disabled=True,
+            )
+            st.caption("마감된 공고는 목표금액 계산에 포함하지 않습니다.")
+        elif bool(row["eligible"]):
             already_added = opportunity_id in st.session_state.goal_opportunities
             st.button(
                 "목표계획에서 확인" if already_added else "목표계획에 담기",
@@ -974,6 +1015,7 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
     )
     contribution = plan.current_amount + plan.expected_min
     progress = min(contribution / plan.target_amount, 1.0) if plan.target_amount else 0
+    scenarios = compare_goal_scenarios(plan)
 
     render_section_head("PLAN RESULT", "현재 계획으로 가능한 경로")
     result, impact = st.columns([1.4, 1], gap="large")
@@ -1001,6 +1043,30 @@ def render_goal_plan(ranked: pd.DataFrame, opportunities: pd.DataFrame, savings:
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown(
+        f"""
+        <div class="scenario-grid">
+          <div class="scenario-card">
+            <div class="label">경제기회 없이 저축</div>
+            <div class="amount">월 {format_money(scenarios.baseline_monthly)}</div>
+            <div class="desc">현재 보유 금액만 반영한 출발점</div>
+          </div>
+          <div class="scenario-card active">
+            <div class="label">선택한 기회 반영</div>
+            <div class="amount">월 {format_money(scenarios.planned_monthly)}</div>
+            <div class="desc">비경쟁형 기회의 최소 혜택을 반영한 기본 계획</div>
+          </div>
+          <div class="scenario-card">
+            <div class="label">경쟁형 기회까지 성공 시</div>
+            <div class="amount">월 {format_money(scenarios.optimistic_monthly)}</div>
+            <div class="desc">상금까지 받은 경우의 가능성 시나리오</div>
+          </div>
+        </div>
+        <div class="scenario-impact">선택한 경제기회로 매달 필요한 저축액을 {format_money(scenarios.monthly_reduction)} 줄일 수 있어요.</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     savings_total = plan.monthly_required * plan.remaining_months
     planned_total = min(plan.current_amount + plan.expected_min + savings_total, plan.target_amount)

@@ -21,6 +21,14 @@ class GoalPlan:
 
 
 @dataclass(frozen=True)
+class GoalScenarioComparison:
+    baseline_monthly: int
+    planned_monthly: int
+    optimistic_monthly: int
+    monthly_reduction: int
+
+
+@dataclass(frozen=True)
 class SavingsProjection:
     monthly_contribution: int
     months: int
@@ -103,6 +111,19 @@ def calculate_goal_plan(
         base_gap=base_gap,
         optimistic_gap=optimistic_gap,
         monthly_required=monthly_required,
+    )
+
+
+def compare_goal_scenarios(plan: GoalPlan) -> GoalScenarioComparison:
+    """Compare monthly saving needs before and after applying opportunities."""
+    baseline_gap = max(plan.target_amount - plan.current_amount, 0)
+    baseline_monthly = math.ceil(baseline_gap / plan.remaining_months)
+    optimistic_monthly = math.ceil(plan.optimistic_gap / plan.remaining_months)
+    return GoalScenarioComparison(
+        baseline_monthly=baseline_monthly,
+        planned_monthly=plan.monthly_required,
+        optimistic_monthly=optimistic_monthly,
+        monthly_reduction=max(baseline_monthly - plan.monthly_required, 0),
     )
 
 

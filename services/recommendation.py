@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 
 
@@ -20,9 +22,11 @@ def rank_opportunities(
     available_hours: int,
     region: str = "",
     interests: list[str] | None = None,
+    as_of: date | None = None,
 ) -> pd.DataFrame:
     """Return opportunities ranked by a transparent, rule-based match score."""
     interests = interests or []
+    as_of = as_of or date.today()
     ranked: list[dict[str, object]] = []
 
     for _, row in opportunities.iterrows():
@@ -44,6 +48,13 @@ def rank_opportunities(
         )
         required_hours = int(row.get("weekly_hours", 0) or 0)
         hours_ok = required_hours <= available_hours or required_hours == 0
+        deadline_value = pd.to_datetime(row.get("deadline"), errors="coerce")
+        days_left = (
+            (deadline_value.date() - as_of).days
+            if not pd.isna(deadline_value)
+            else None
+        )
+        is_closed = days_left is not None and days_left < 0
 
         score = 40
         reasons: list[str] = []
@@ -84,16 +95,24 @@ def rank_opportunities(
             score += 10
             reasons.append("관심 분야 일치")
 
+        if is_closed:
+            score = 0
+            reasons.insert(0, "신청 마감")
+
         record = row.to_dict()
         record["match_score"] = max(0, min(100, score))
         record["match_reason"] = " · ".join(reasons[:3]) or "기본 조건으로 추천"
-        record["eligible"] = grade_ok and residence_ok and hours_ok and region_ok
+        record["eligible"] = (
+            grade_ok and residence_ok and hours_ok and region_ok and not is_closed
+        )
+        record["is_closed"] = is_closed
+        record["days_left"] = days_left
         ranked.append(record)
 
     result = pd.DataFrame(ranked)
     return result.sort_values(
-        ["eligible", "match_score", "deadline"],
-        ascending=[False, False, True],
+        ["is_closed", "eligible", "match_score", "deadline"],
+        ascending=[True, False, False, True],
     ).reset_index(drop=True)
 
 
@@ -103,9 +122,18 @@ def filter_opportunities(
     query: str = "",
     categories: list[str] | None = None,
     sort_by: str = "추천순",
+    include_closed: bool = True,
+    deadline_within_days: int | None = None,
 ) -> pd.DataFrame:
     """Search, filter, and sort an already-ranked opportunity table."""
     result = opportunities.copy()
+    if "is_closed" not in result.columns:
+        result["is_closed"] = False
+    if not include_closed:
+        result = result[~result["is_closed"].fillna(False)]
+    if deadline_within_days is not None and "days_left" in result.columns:
+        days_left = pd.to_numeric(result["days_left"], errors="coerce")
+        result = result[days_left.between(0, deadline_within_days, inclusive="both")]
     normalized_query = query.strip().casefold()
     if normalized_query:
         searchable_columns = ["title", "organization", "summary", "tags", "region_requirement"]
@@ -121,20 +149,20 @@ def filter_opportunities(
 
     if sort_by == "마감 임박순":
         result = result.sort_values(
-            ["deadline", "eligible", "match_score"],
-            ascending=[True, False, False],
+            ["is_closed", "deadline", "eligible", "match_score"],
+            ascending=[True, True, False, False],
             na_position="last",
         )
     elif sort_by == "혜택 큰 순":
         result = result.sort_values(
-            ["amount_max", "eligible", "match_score", "deadline"],
-            ascending=[False, False, False, True],
+            ["is_closed", "amount_max", "eligible", "match_score", "deadline"],
+            ascending=[True, False, False, False, True],
             na_position="last",
         )
     else:
         result = result.sort_values(
-            ["eligible", "match_score", "deadline"],
-            ascending=[False, False, True],
+            ["is_closed", "eligible", "match_score", "deadline"],
+            ascending=[True, False, False, True],
             na_position="last",
         )
     return result.reset_index(drop=True)

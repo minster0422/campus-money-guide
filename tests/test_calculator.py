@@ -2,7 +2,12 @@ import unittest
 
 import pandas as pd
 
-from services.calculator import calculate_goal_plan, calculate_hourly_income, calculate_savings_projection
+from services.calculator import (
+    calculate_goal_plan,
+    calculate_hourly_income,
+    calculate_savings_projection,
+    compare_goal_scenarios,
+)
 
 
 class GoalCalculatorTest(unittest.TestCase):
@@ -23,6 +28,12 @@ class GoalCalculatorTest(unittest.TestCase):
         self.assertEqual(plan.challenge_max, 1_000_000)
         self.assertEqual(plan.base_gap, 1_500_000)
         self.assertEqual(plan.monthly_required, 250_000)
+
+        scenarios = compare_goal_scenarios(plan)
+        self.assertEqual(scenarios.baseline_monthly, 300_000)
+        self.assertEqual(scenarios.planned_monthly, 250_000)
+        self.assertEqual(scenarios.optimistic_monthly, 66_667)
+        self.assertEqual(scenarios.monthly_reduction, 50_000)
 
     def test_empty_selection(self):
         plan = calculate_goal_plan(
